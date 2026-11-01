@@ -29,9 +29,15 @@ SYSTEM_PROMPT = """你在为一个长期记忆系统做提炼。输入是一段 
 
 每条记忆的字段：
   kind       episode（发生过的事）/ fact（稳定属性）/ lesson（教训）/ skill（技能）/ reflection（想法）
-  text       一句话，中文，不超过 40 字，用第三人称描述（"爹"指机器人主人）
+  text       一句话，中文，不超过 40 字，用第三人称描述
   importance 0.0~1.0，越长期有用越高
   category   profile / preference / life / study / work / social / health / general
+
+人物指代（重要，别搞错）：
+- 发言人标注里带「主人」的那位，就是机器人主人本人，也叫「爹」。
+  他的昵称（如「我是260」）指的是同一个人，不是第三个人。
+  写记忆时统一写「主人」或「爹」，不要用昵称，更不要写成两个人之间的关系。
+- 「肥鱼」是机器人自己。
 
 规则：
 - 寒暄、重复、无信息量的内容不要。
@@ -40,13 +46,17 @@ SYSTEM_PROMPT = """你在为一个长期记忆系统做提炼。输入是一段 
 - 最多 6 条，没有值得记的就输出 []。"""
 
 
-def _fmt_batch(rows: list[dict], max_chars: int = 240) -> str:
+def _fmt_batch(rows: list[dict], max_chars: int = 240, owner_id: str = "") -> str:
     lines = []
     for r in rows:
         who = "对方" if r.get("role") == "user" else "肥鱼"
         name = (r.get("sender_name") or "").strip()
         if who == "对方" and name:
             who = f"{name}"
+        sid = str(r.get("sender_id") or "").strip()
+        if owner_id and sid and sid == owner_id:
+            # 给主人的发言打标，否则提炼模型会把昵称当成另一个人
+            who = f"{who}(主人)"
         t = (r.get("text") or "").strip().replace("\n", " ")
         if len(t) > max_chars:
             t = t[:max_chars] + "…"
@@ -140,7 +150,8 @@ def _visibility_for(cfg, scope: str, owner_id: str, category: str) -> str:
 
 
 def _process_group(logger, cfg, rows: list[dict]) -> dict:
-    conv = _fmt_batch(rows)
+    owner_cfg = str(on(cfg, "master", "owner_id", default="") or "")
+    conv = _fmt_batch(rows, owner_id=owner_cfg)
     prompt = [{"role": "system", "content": SYSTEM_PROMPT},
               {"role": "user", "content": conv}]
     raw = llm.chat(prompt, cfg, temperature=0.1, max_tokens=800)
