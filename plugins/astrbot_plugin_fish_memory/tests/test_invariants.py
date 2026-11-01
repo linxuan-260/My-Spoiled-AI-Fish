@@ -37,10 +37,14 @@ def _ctx(msg_id="t1", scope="test:group:1"):
 
 
 def test_persona_exists_and_hash_matches_backup():
-    """A1：当前人格 sha256 必须等于备份基线。"""
+    """A1：当前人格 sha256 必须等于基线。
+
+    人格正文是用户自己维护的，长度会随她改设定而变（2026-10-30 从 1022 改到 1424），
+    所以这里只查「非空、像个正经人格」，真正的判据是 sha256 与基线一致。
+    """
     want = str(on(CFG, "persona_guard", "sha256", default="") or "")
     have = persona_guard.current_hash()
-    assert len(PERSONA) == 1022, f"人格正文长度变了：{len(PERSONA)}"
+    assert len(PERSONA) >= 200, f"人格正文太短，像被截断：{len(PERSONA)}"
     assert have == want, f"人格被改动！cur={have} exp={want}"
 
 

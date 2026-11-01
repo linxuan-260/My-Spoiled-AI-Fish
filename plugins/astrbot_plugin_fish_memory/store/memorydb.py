@@ -201,7 +201,7 @@ def consolidate(**kw) -> dict:
     opt.update({k: v for k, v in kw.items() if k in opt and v is not None})
 
     out = {"promoted": 0, "demoted": 0, "core_total": 0}
-    p = db_file()
+    p = ensure()   # 顺手补列：旧库第一次跑也能直接来
     if not p.exists():
         return out
 
@@ -253,7 +253,7 @@ def set_tier(ids: list[int], tier: str = "core") -> int:
     if not ids or tier not in ("core", "normal"):
         return 0
     try:
-        with dbutil.tx(db_file()) as con:
+        with dbutil.tx(ensure()) as con:
             n = 0
             for mid in ids:
                 cur = con.execute("UPDATE memories SET tier=? WHERE id=?",
