@@ -40,6 +40,49 @@ sudo systemctl restart astrbot fishmem-panel fishmem-workers
 
 ---
 
+## 部署
+
+`deploy/` 让这个仓库从「一份代码」变成「能跑起来的一套服务」：
+
+| 文件 | 作用 |
+|---|---|
+| `install.sh` | 拷插件 + tools、写配置模板、装三个 systemd 单元 |
+| `systemd/*.service` | astrbot / fishmem-panel / fishmem-workers |
+| `requirements.txt` | 额外依赖（只有 qzone 需要） |
+| `patches/patch_imgfix.py` | 可选：智谱多模态 400 的修复 |
+
+```bash
+sudo bash deploy/install.sh                        # 默认 /opt/astrbot
+sudo APP_DIR=/srv/astrbot bash deploy/install.sh   # 装到别的目录
+```
+
+三个服务的分工：
+
+| 服务 | 管什么 | 改什么要重启 |
+|---|---|---|
+| `astrbot` | 主进程，注入 / 检索都在这里加载 | `plugins/*.py` |
+| `fishmem-workers` | ingest / life / digest 三进程 | `worker/*.py` |
+| `fishmem-panel` | 面板 + 星图（仅 127.0.0.1:6186） | `tools/fishmem_web.py` |
+
+**只改配置不用重启任何服务** —— 插件按文件 mtime 热重载。
+
+### 脚本的保守设计
+
+- **不覆盖已有配置**：配置已存在就跳过，不会冲掉你填的 `owner_id`
+- **不删除旧插件**：已存在的插件目录会改名成 `.bak-install-<时间戳>`
+- **只 `enable` 不 `start`**：启动时机交给你，装完不会顺手重启线上
+- **可重复执行**：装坏了再跑一遍即可
+
+第一次用建议先读一遍脚本 —— 它只做拷贝、模板替换和单元安装，不碰数据库目录。
+
+### 依赖
+
+五层记忆插件**零第三方依赖**（纯标准库）；qzone 需要 `Pillow` / `json5` / `apilmoji`。完整版本矩阵（AstrBot 4.29.3 / Python 3.12.16 / 19 个插件的精确版本）见 [docs/依赖清单.md](docs/依赖清单.md)。
+
+三个 systemd 单元的内容取自真实运行环境，包括 `RestartSec`、`TimeoutStopSec`、`KillMode=control-group` 这些容易漏的细节。
+
+---
+
 ## 身份绑定规则 ⭐
 
 这是整个系统最容易配错、后果也最严重的一块。搞错了要么「她记不住你说的话」，要么「陌生人能读到群里的内容」。
