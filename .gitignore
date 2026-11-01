@@ -1,0 +1,46 @@
+# ── 大文件 / 运行时产物（合计约 3.5 GB）────────────────
+qqbot/
+SnowLuma/
+assets/
+.deploy_tmp/
+data/
+venv/
+.venv/
+
+# ── 私人内容：运行手册、含密码的运维脚本 ────────────────
+private/
+.env.local
+.env
+.deny-list
+
+# ── 本地配置（只允许 *.example.json 入库）──────────────
+config/*.json
+!config/*.example.json
+*.local.yml
+
+# ── 密钥与凭据 ─────────────────────────────────────
+*.pem
+*.key
+*_pw.txt
+known_hosts
+*.token
+
+# ── 运行时数据与缓存 ───────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.log
+__pycache__/
+*.pyc
+node_modules/
+
+# ── 服务器上的备份快照：版本由 git 负责 ────────────────
+*.bak-*
+
+# ── 一次性迁移文件 ────────────────────────────────
+move_verify.txt
+
+# ── 系统垃圾 ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

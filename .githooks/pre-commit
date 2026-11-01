@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# 提交前扫描：挡住密钥、密码、以及你自己的真实 QQ / 服务器地址
+#
+# 安装：git config core.hooksPath .githooks
+#
+# 「真实值」不写在这个文件里（这个文件会进公开仓库），
+# 而是放在仓库根的 .deny-list（已被 .gitignore 忽略），每行一个敏感字面量。
+set -uo pipefail
+
+fail=0
+staged="$(git diff --cached -U0 --no-color 2>/dev/null | grep '^+' | grep -v '^+++')"
+[ -z "$staged" ] && exit 0
+
+check() {
+  local name="$1" pattern="$2" hit
+  hit="$(printf '%s\n' "$staged" | grep -nEi "$pattern" | head -5)"
+  if [ -n "$hit" ]; then
+    echo "✗ 命中【$name】："
+    printf '%s\n' "$hit" | sed 's/^/    /'
+    fail=1
+  fi
+}
+
+# ── 通用密钥特征 ────────────────────────────────────
+check "API Key"           'sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{20,}|ghp_[A-Za-z0-9]{20,}'
+check "私钥块"             'BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY'
+check "赋值型凭据"         '(password|passwd|secret|access_?token)\s*[:=]\s*["'"'"'][^"'"'"']{6,}'
+
+# ── 个人真实值（本地黑名单）─────────────────────────
+DENY="$(git rev-parse --show-toplevel)/.deny-list"
+if [ -f "$DENY" ]; then
+  while IFS= read -r lit; do
+    [ -z "$lit" ] && continue
+    case "$lit" in \#*) continue ;; esac
+    hit="$(printf '%s\n' "$staged" | grep -nF -- "$lit" | head -3)"
+    if [ -n "$hit" ]; then
+      echo "✗ 命中本地黑名单【$(printf '%s' "$lit" | cut -c1-3)***】："
+      printf '%s\n' "$hit" | sed 's/^/    /'
+      fail=1
+    fi
+  done < "$DENY"
+else
+  echo "· 未找到 .deny-list，跳过个人黑名单检查（建议放一份）"
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo
+  echo "提交已拒绝。确认无误可跳过：git commit --no-verify"
+  exit 1
+fi
+
+echo "✓ 敏感信息扫描通过"

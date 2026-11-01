@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>肥鱼 · 五层记忆</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d222b; --line:#262b36;
+    --fg:#e6e9ef; --muted:#8b93a3; --accent:#4da3ff;
+    --ok:#46d39a; --warn:#ffb454; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.6 "Microsoft YaHei","Segoe UI",system-ui,sans-serif}
+  a{color:var(--accent)}
+  header{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:10px;
+         padding:12px 18px;background:rgba(15,17,21,.92);border-bottom:1px solid var(--line);
+         backdrop-filter:blur(6px);flex-wrap:wrap}
+  h1{font-size:16px;margin:0 8px 0 0;font-weight:600;letter-spacing:.5px}
+  .pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{padding:3px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line);
+        background:var(--panel2);color:var(--muted);white-space:nowrap}
+  .pill b{color:var(--fg);font-weight:600}
+  .pill.ok{border-color:#1f5540;color:var(--ok)}
+  .pill.warn{border-color:#5c4620;color:var(--warn)}
+  .pill.bad{border-color:#5c2626;color:var(--bad)}
+  .spacer{flex:1}
+  button{font:inherit;font-size:13px;padding:5px 12px;border-radius:8px;cursor:pointer;
+         background:var(--panel2);color:var(--fg);border:1px solid var(--line)}
+  button:hover{border-color:var(--accent)}
+  button.on{background:var(--accent);color:#08121f;border-color:var(--accent);font-weight:600}
+  nav{display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid var(--line);
+      overflow-x:auto;background:var(--bg)}
+  nav button{white-space:nowrap}
+  main{padding:18px;max-width:1500px;margin:0 auto}
+  section{display:none}
+  section.on{display:block}
+  h2{font-size:14px;color:var(--muted);font-weight:600;margin:22px 0 10px;
+     text-transform:uppercase;letter-spacing:1px}
+  h2:first-child{margin-top:0}
+  .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .k{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .card .v{font-size:22px;font-weight:700;letter-spacing:.5px}
+  .card .sub{font-size:12px;color:var(--muted);margin-top:4px;word-break:break-all}
+  .card.ok .v{color:var(--ok)} .card.warn .v{color:var(--warn)} .card.bad .v{color:var(--bad)}
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+        border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600;font-size:12px;
+     position:sticky;top:0;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#1b2029}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.wrap{max-width:620px;word-break:break-word}
+  .mono{font-family:Consolas,"Cascadia Mono",monospace;font-size:12px}
+  .muted{color:var(--muted)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11px;
+       border:1px solid var(--line);background:var(--panel2);color:var(--muted)}
+  .k-episode{color:#7ab7ff;border-color:#28405f}
+  .k-fact{color:#46d39a;border-color:#1f5540}
+  .k-lesson{color:#ffb454;border-color:#5c4620}
+  .k-skill{color:#c792ea;border-color:#3d2a52}
+  .k-reflection{color:#ff9ec4;border-color:#55293c}
+  .bar{height:6px;border-radius:4px;background:#0b0d11;border:1px solid var(--line);
+       overflow:hidden;min-width:56px;margin-top:5px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  input[type=text],select{font:inherit;font-size:13px;padding:5px 10px;border-radius:8px;
+    background:var(--panel2);color:var(--fg);border:1px solid var(--line);min-width:150px}
+  .empty{padding:26px;text-align:center;color:var(--muted);
+         background:var(--panel);border:1px dashed var(--line);border-radius:12px}
+  .split{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+  .note{font-size:12px;color:var(--muted);margin:-4px 0 12px}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+       padding:1px 6px;font-size:12px}
+  a.starlink{padding:5px 12px;border-radius:8px;font-size:13px;text-decoration:none;
+    background:linear-gradient(140deg,#12233b,#1b1630);border:1px solid #2b3f5e;
+    color:#8fd0ff;white-space:nowrap}
+  a.starlink:hover{border-color:var(--accent);color:#cfe9ff}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>肥鱼 · 五层记忆</h1>
+  <div class="pills" id="pills"><span class="pill">载入中…</span></div>
+  <div class="spacer"></div>
+  <span class="muted" id="stamp" style="font-size:12px"></span>
+  <a class="starlink" href="/starmap" target="_blank" rel="noopener">✦ 记忆星图</a>
+  <label class="pill" style="cursor:pointer"><input type="checkbox" id="auto" checked> 自动刷新</label>
+  <button id="refresh">刷新</button>
+</header>
+
+<nav id="tabs">
+  <button data-tab="overview" class="on">概览</button>
+  <button data-tab="memories">记忆</button>
+  <button data-tab="moods">情绪</button>
+  <button data-tab="life">生活</button>
+  <button data-tab="style">语感</button>
+  <button data-tab="ledger">注入账本</button>
+  <button data-tab="queue">队列</button>
+  <button data-tab="check">自检</button>
+</nav>
+
+<main>
+  <section id="overview" class="on"></section>
+  <section id="memories"></section>
+  <section id="moods"></section>
+  <section id="life"></section>
+  <section id="style"></section>
+  <section id="ledger"></section>
+  <section id="queue"></section>
+  <section id="check"></section>
+</main>
+
+<script>
+"use strict";
+
+const $ = (s) => document.querySelector(s);
+const el = (id) => document.getElementById(id);
+
+function esc(v){
+  if (v === null || v === undefined) return "";
+  return String(v).replace(/[&<>"']/g, (c) => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+function short(v, n){
+  const s = (v === null || v === undefined) ? "" : String(v);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+function num(v, d=2){
+  if (v === null || v === undefined || v === "") return "";
+  const n = Number(v);
+  return Number.isFinite(n) ? (Math.round(n*10**d)/10**d).toFixed(d) : esc(v);
+}
+function ts(v){
+  const s = (v === null || v === undefined) ? "" : String(v);
+  return s.replace("T", " ").replace(/(\+08:00|Z)$/, "").slice(0, 19);
+}
+
+async function getJSON(path){
+  const r = await fetch(path, {cache:"no-store"});
+  const j = await r.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+
+/* 通用表格：cols = [{k,label,cls,fmt}] */
+function table(rows, cols, opts){
+  opts = opts || {};
+  if (!rows || !rows.length) return `<div class="empty">${esc(opts.empty || "暂无数据")}</div>`;
+  const head = cols.map(c => `<th>${esc(c.label)}</th>`).join("");
+  const body = rows.map((r, i) => {
+    const tds = cols.map(c => {
+      let v;
+      if (c.html) v = c.html(r, i);
+      else if (c.fmt) v = c.fmt(r[c.k], r, i);
+      else v = esc(short(r[c.k], c.len || 240));
+      return `<td class="${c.cls || ""}">${v}</td>`;
+    }).join("");
+    return `<tr>${tds}</tr>`;
+  }).join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function kindTag(k){
+  return `<span class="tag k-${esc(k)}">${esc(k)}</span>`;
+}
+function impBar(v){
+  const p = Math.max(0, Math.min(1, Number(v) || 0));
+  return `<span class="mono">${num(v,2)}</span><div class="bar"><i style="width:${(p*100).toFixed(0)}%"></i></div>`;
+}
+
+/* ------------------------------------------------------------------ 概览 */
+let LAST = null;
+
+async function loadOverview(){
+  const d = await getJSON("/api/overview");
+  LAST = d;
+  renderPills(d);
+
+  const p = d.persona || {};
+  const workers = d.workers || [];
+  const alive = workers.filter(w => w.alive).length;
+  const cfg = d.config || {};
+  const budgets = cfg.budgets || {};
+  const layers = cfg.layers || {};
+
+  const personaCls = p.ok === true ? "ok" : (p.ok === false ? "bad" : "warn");
+  const workerCls = alive === workers.length ? "ok" : (alive ? "warn" : "bad");
+
+  el("overview").innerHTML = `
+    <h2>关键状态</h2>
+    <div class="cards">
+      <div class="card ${personaCls}">
+        <div class="k">人格完整性</div>
+        <div class="v">${p.ok === true ? "未改动" : (p.ok === false ? "被改动!" : "未记录基线")}</div>
+        <div class="sub">${esc(p.len || 0)} 字 · sha256 ${esc((p.sha256||"").slice(0,16))}…</div>
+        <div class="sub">${esc(p.note || "")} · ${esc(ts(p.updated_at))}</div>
+      </div>
+      <div class="card ${workerCls}">
+        <div class="k">后台 worker</div>
+        <div class="v">${alive} / ${workers.length}</div>
+        <div class="sub">${workers.map(w => `${w.name}:${w.alive ? "✓" + w.pid : "✗"}`).join(" · ")}</div>
+      </div>
+      <div class="card ${d.queue.pending ? "warn" : ""}">
+        <div class="k">待提炼消息</div>
+        <div class="v">${d.queue.pending}</div>
+        <div class="sub">攒够 batch_size=${esc(cfg.ingest ? cfg.ingest.batch_size : "?")} 条才跑一轮${d.queue.oldest ? " · 最早 " + esc(ts(d.queue.oldest)) : ""}</div>
+      </div>
+      <div class="card">
+        <div class="k">注入账本</div>
+        <div class="v">${d.ledger.today}</div>
+        <div class="sub">今日 · 累计 ${d.ledger.total} 条${d.ledger.last ? " · 最近 " + esc(ts(d.ledger.last.ts)) : ""}</div>
+      </div>
+      <div class="card ${cfg.master ? "" : "bad"}">
+        <div class="k">总开关</div>
+        <div class="v">${cfg.master ? "已启用" : "已关闭"}</div>
+        <div class="sub">${cfg.shadow ? "影子模式（只记账本不注入）" : "正常注入"} · 单条上限 ${esc(cfg.max_reply_chars)} 字</div>
+      </div>
+    </div>
+
+    <h2>五层开关与预算</h2>
+    <div class="cards">
+      ${[1,2,3,4,5].map(i => {
+        const key = {1:"memory",2:"mood",3:"life",4:"style",5:"feedback"}[i];
+        const b = budgets[key];
+        return `<div class="card ${layers[i] ? "" : "warn"}">
+          <div class="k">L${i} ${key}</div>
+          <div class="v">${layers[i] ? "开" : "关"}</div>
+          <div class="sub">预算 ${b === undefined ? "—" : esc(b)} 字</div></div>`;
+      }).join("")}
+      <div class="card">
+        <div class="k">总预算</div>
+        <div class="v">${esc(budgets.total === undefined ? "—" : budgets.total)}</div>
+        <div class="sub">五层加起来的上限</div>
+      </div>
+    </div>
+
+    <h2>库文件</h2>
+    ${table(d.dbs, [
+      {k:"layer", label:"层"},
+      {k:"exists", label:"存在", fmt:v => v ? "✓" : "✗"},
+      {k:"kb", label:"大小 (KB)", cls:"num"}
+    ])}
+
+    <h2>记忆构成</h2>
+    <div class="split">
+      <div>${table(d.memory.by_kind, [
+        {k:"kind", label:"类型", html:r => kindTag(r.kind)},
+        {k:"n", label:"条数", cls:"num"}
+      ], {empty:"还没有 active 记忆"})}</div>
+      <div>${table(d.memory.by_status, [
+        {k:"status", label:"状态"},
+        {k:"n", label:"条数", cls:"num"}
+      ], {empty:"空"})}</div>
+    </div>
+
+    <h2>最近活动</h2>
+    <div class="split">
+      <div><div class="note">情绪（最近 5 个作用域）</div>
+        ${table(d.mood, [
+          {k:"scope_id", label:"作用域", len:34},
+          {k:"pleasure", label:"愉悦", cls:"num", fmt:v => num(v)},
+          {k:"arousal", label:"唤醒", cls:"num", fmt:v => num(v)},
+          {k:"dominance", label:"掌控", cls:"num", fmt:v => num(v)},
+          {k:"updated_at", label:"更新", fmt:ts}
+        ])}
+      </div>
+      <div><div class="note">生活层（最近 3 条）</div>
+        ${table(d.life, [
+          {k:"kind", label:"类型"},
+          {k:"topic", label:"内容", len:60},
+          {k:"ts", label:"时间", fmt:ts}
+        ])}
+      </div>
+    </div>
+  `;
+}
+
+function renderPills(d){
+  const p = d.persona || {};
+  const alive = (d.workers || []).filter(w => w.alive).length;
+  const cls = (ok) => ok ? "ok" : "bad";
+  el("pills").innerHTML = [
+    `<span class="pill ${p.ok === true ? "ok" : (p.ok === false ? "bad" : "warn")}">人格 <b>${p.ok === true ? "OK" : (p.ok === false ? "改动" : "?")}</b></span>`,
+    `<span class="pill ${cls(alive === 3)}">worker <b>${alive}/3</b></span>`,
+    `<span class="pill ${d.queue.pending ? "warn" : "ok"}">队列 <b>${d.queue.pending}</b></span>`,
+    `<span class="pill">今日注入 <b>${d.ledger.today}</b></span>`,
+    `<span class="pill ${d.config.master ? "ok" : "bad"}">总开关 <b>${d.config.master ? "ON" : "OFF"}</b></span>`
+  ].join("");
+  el("stamp").textContent = "更新于 " + ts(d.ts);
+}
+
+/* ------------------------------------------------------------------ 记忆 */
+let memFilter = {kind:"all", status:"active", vis:"all", q:""};
+const VIS_LABEL = {private:"私有", owner:"本人", public:"共享", group:"群"};
+
+function visBadge(r){
+  const v = r.visibility || "private";
+  const cls = v === "public" ? "ok" : (v === "owner" ? "warn" : "");
+  const to = v === "public" ? "private" : "public";
+  return `<button class="pill ${cls}" data-vis-mid="${r.id}" data-vis-to="${to}"
+          title="点一下切换 共享层 / 私有">${VIS_LABEL[v] || v}</button>`;
+}
+
+async function loadMemories(){
+  const qs = new URLSearchParams({kind:memFilter.kind, status:memFilter.status,
+                                  vis:memFilter.vis, q:memFilter.q, limit:"300"});
+  const d = await getJSON("/api/memories?" + qs.toString());
+  el("memories").innerHTML = `
+    <div class="toolbar">
+      <select id="f-kind">
+        ${["all","episode","fact","lesson","skill","reflection"].map(k =>
+          `<option value="${k}" ${memFilter.kind===k?"selected":""}>${k==="all"?"全部类型":k}</option>`).join("")}
+      </select>
+      <select id="f-status">
+        ${["active","archived","all"].map(s =>
+          `<option value="${s}" ${memFilter.status===s?"selected":""}>${s==="all"?"全部状态":s}</option>`).join("")}
+      </select>
+      <select id="f-vis">
+        ${["all","private","owner","public"].map(v =>
+          `<option value="${v}" ${memFilter.vis===v?"selected":""}>${v==="all"?"全部可见性":(VIS_LABEL[v]||v)}</option>`).join("")}
+      </select>
+      <input type="text" id="f-q" placeholder="搜内容 / 分类 / 作用域" value="${esc(memFilter.q)}">
+      <button id="f-go">筛选</button>
+      <span class="muted">${d.count} 条</span>
+    </div>
+    ${table(d.rows, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"kind", label:"类型", html:r => kindTag(r.kind)},
+      {k:"text", label:"内容", cls:"wrap"},
+      {k:"category", label:"分类"},
+      {k:"importance", label:"重要性", html:r => impBar(r.importance)},
+      {k:"scope_id", label:"作用域", len:26, cls:"mono"},
+      {k:"visibility", label:"可见", html:r => visBadge(r)},
+      {k:"created_at", label:"建立", fmt:ts},
+      {k:"_op", label:"操作", html:(r) => r.status === "active"
+          ? `<button data-mid="${r.id}" data-to="archived">归档</button>`
+          : `<button data-mid="${r.id}" data-to="active">恢复</button>`}
+    ], {empty:"这个筛选下没有记忆"})}
+  `;
+  el("f-go").onclick = () => {
+    memFilter.kind = el("f-kind").value;
+    memFilter.status = el("f-status").value;
+    memFilter.vis = el("f-vis").value;
+    memFilter.q = el("f-q").value.trim();
+    loadMemories();
+  };
+  el("f-q").onkeydown = (e) => { if (e.key === "Enter") el("f-go").click(); };
+  el("f-vis").onchange = () => { memFilter.vis = el("f-vis").value; loadMemories(); };
+  el("memories").querySelectorAll("button[data-mid]").forEach(b => {
+    b.onclick = () => markMemory(Number(b.dataset.mid), b.dataset.to);
+  });
+  el("memories").querySelectorAll("button[data-vis-mid]").forEach(b => {
+    b.onclick = () => markVisibility(Number(b.dataset.visMid), b.dataset.visTo);
+  });
+}
+
+async function markMemory(id, status){
+  const word = status === "archived" ? "归档" : "恢复";
+  if (!confirm(`确定${word}记忆 #${id} 吗？`)) return;
+  const r = await fetch("/api/memories/status", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({id, status})
+  });
+  const j = await r.json();
+  if (!j.ok) { alert("失败：" + (j.error || "未知错误")); return; }
+  loadMemories();
+  loadOverview();
+}
+
+async function markVisibility(id, visibility){
+  const r = await fetch("/api/memories/status", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({id, visibility})
+  });
+  const j = await r.json();
+  if (!j.ok) { alert("失败：" + (j.error || "未知错误")); return; }
+  loadMemories();
+}
+
+/* ------------------------------------------------------------------ 情绪 */
+async function loadMoods(){
+  const d = await getJSON("/api/moods");
+  el("moods").innerHTML = `
+    <h2>当前情绪状态</h2>
+    ${table(d.state, [
+      {k:"scope_id", label:"作用域", len:40, cls:"mono"},
+      {k:"pleasure", label:"愉悦", cls:"num", fmt:v => num(v)},
+      {k:"arousal", label:"唤醒", cls:"num", fmt:v => num(v)},
+      {k:"dominance", label:"掌控", cls:"num", fmt:v => num(v)},
+      {k:"energy", label:"精力", cls:"num", fmt:v => num(v)},
+      {k:"updated_at", label:"更新", fmt:ts}
+    ], {empty:"还没有情绪状态"})}
+
+    <h2>情绪事件</h2>
+    ${table(d.events, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"trigger", label:"触发", len:40},
+      {k:"d_p", label:"Δ愉悦", cls:"num", fmt:v => num(v)},
+      {k:"d_a", label:"Δ唤醒", cls:"num", fmt:v => num(v)},
+      {k:"after_p", label:"后·愉悦", cls:"num", fmt:v => num(v)},
+      {k:"after_a", label:"后·唤醒", cls:"num", fmt:v => num(v)},
+      {k:"labels", label:"标签", len:20},
+      {k:"note", label:"备注", len:50}
+    ], {empty:"还没有情绪事件"})}
+
+    <h2>标签与嘴硬状态</h2>
+    <div class="split">
+      <div>${table(d.labels, [
+        {k:"scope_id", label:"作用域", len:22, cls:"mono"},
+        {k:"label", label:"标签"},
+        {k:"value", label:"值", cls:"num", fmt:v => num(v)},
+        {k:"updated_at", label:"更新", fmt:ts}
+      ], {empty:"没有标签"})}</div>
+      <div>${table(d.tough, [
+        {k:"scope_id", label:"作用域", len:22, cls:"mono"},
+        {k:"active", label:"生效"},
+        {k:"until", label:"到", fmt:ts},
+        {k:"reason", label:"原因", len:40}
+      ], {empty:"没有嘴硬记录"})}</div>
+    </div>
+  `;
+}
+
+/* ------------------------------------------------------------------ 生活 */
+async function loadLife(){
+  const d = await getJSON("/api/life");
+  el("life").innerHTML = `
+    <h2>活动流水</h2>
+    ${table(d.activities, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"kind", label:"类型"},
+      {k:"topic", label:"在做", cls:"wrap", len:80},
+      {k:"detail", label:"细节", cls:"wrap", len:150},
+      {k:"curious", label:"好奇", cls:"num", fmt:v => num(v)},
+      {k:"mood_p", label:"心情", cls:"num", fmt:v => num(v)}
+    ], {empty:"worker 还没产生活动"})}
+
+    <h2>随笔</h2>
+    ${table(d.notes, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"note", label:"内容", cls:"wrap", len:200},
+      {k:"ttl_hours", label:"存活(h)", cls:"num"},
+      {k:"promoted", label:"已升记忆"},
+      {k:"memory_id", label:"记忆 ID", cls:"num mono"}
+    ], {empty:"还没有随笔"})}
+
+    <h2>兴趣权重</h2>
+    ${table(d.interests, [
+      {k:"name", label:"兴趣"},
+      {k:"weight", label:"权重", cls:"num", fmt:v => num(v)},
+      {k:"source", label:"来源"},
+      {k:"last_touched", label:"最近触碰", fmt:ts}
+    ], {empty:"兴趣表还是空的（会随活动自然长出来）"})}
+  `;
+}
+
+/* ------------------------------------------------------------------ 语感 */
+async function loadStyle(){
+  const d = await getJSON("/api/style");
+  const st = d.cache && d.cache.stats ? d.cache.stats : {};
+  const block = d.cache && d.cache.block ? d.cache.block : "";
+  el("style").innerHTML = `
+    <h2>从真实回复里统计出来的语感</h2>
+    <div class="cards">
+      <div class="card"><div class="k">样本数</div><div class="v">${esc(st.n || 0)}</div><div class="sub">最近的 bot 回复</div></div>
+      <div class="card"><div class="k">中位长度</div><div class="v">${esc(st.median_len || 0)}</div><div class="sub">p90 = ${esc(st.p90_len || 0)} 字</div></div>
+      <div class="card"><div class="k">无标点比例</div><div class="v">${num(st.no_punct_ratio,3)}</div><div class="sub">越接近 1 越像随手打的</div></div>
+      <div class="card"><div class="k">emoji 比例</div><div class="v">${num(st.emoji_ratio,3)}</div><div class="sub">问号比例 ${num(st.q_ratio,3)}</div></div>
+      <div class="card"><div class="k">口头禅</div><div class="v">${esc((st.fillers||[]).slice(0,3).map(f=>f[0]).join(" "))}</div>
+        <div class="sub">${esc((st.fillers||[]).slice(0,4).map(f=>`${f[0]}×${f[1]}`).join(" · "))}</div></div>
+    </div>
+
+    <h2>注入用的语感块${block ? "" : "（还没生成）"}</h2>
+    ${block ? `<div class="card" style="font-size:15px">${esc(block)}</div>`
+            : `<div class="empty">worker 还没刷新过语感缓存</div>`}
+
+    <h2>历史统计</h2>
+    ${table(d.stats, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"window_n", label:"样本", cls:"num"},
+      {k:"median_len", label:"中位", cls:"num", fmt:v => num(v,1)},
+      {k:"p90_len", label:"p90", cls:"num", fmt:v => num(v,1)},
+      {k:"no_punct_ratio", label:"无标点", cls:"num", fmt:v => num(v,3)},
+      {k:"emoji_ratio", label:"emoji", cls:"num", fmt:v => num(v,3)},
+      {k:"q_ratio", label:"问号", cls:"num", fmt:v => num(v,3)}
+    ], {empty:"还没有统计记录"})}
+
+    <h2>语感纠正记录</h2>
+    ${table(d.feedback, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"rule", label:"规则"},
+      {k:"before", label:"改前", cls:"wrap", len:90},
+      {k:"after", label:"改后", cls:"wrap", len:90}
+    ], {empty:"没有纠正记录"})}
+  `;
+}
+
+/* --------------------------------------------------------------- 注入账本 */
+async function loadLedger(){
+  const d = await getJSON("/api/ledger?limit=200");
+  el("ledger").innerHTML = `
+    <h2>各层平均占用</h2>
+    ${table(d.by_layer, [
+      {k:"layer", label:"层"},
+      {k:"n", label:"次数", cls:"num"},
+      {k:"avg_chars", label:"平均字数", cls:"num", fmt:v => num(v,1)}
+    ], {empty:"还没有注入记录"})}
+
+    <h2>按轮次</h2>
+    <div class="note">同一时刻同一作用域算一轮；total 是整轮注入的总字数（预算 400）。</div>
+    ${table(d.turns, [
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"scope_id", label:"作用域", len:40, cls:"mono"},
+      {k:"n_layer", label:"层数", cls:"num"},
+      {k:"chars", label:"各层字数合计", cls:"num"},
+      {k:"total", label:"整轮总字数", cls:"num"}
+    ], {empty:"还没有注入记录"})}
+
+    <h2>明细</h2>
+    ${table(d.rows, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"layer", label:"层"},
+      {k:"block_chars", label:"本层字数", cls:"num"},
+      {k:"total_chars", label:"整轮字数", cls:"num"},
+      {k:"query", label:"触发消息", cls:"wrap", len:90}
+    ], {empty:"还没有注入记录"})}
+  `;
+}
+
+/* ------------------------------------------------------------------ 队列 */
+async function loadQueue(){
+  const d = await getJSON("/api/queue?limit=80");
+  const s = (d.stats && d.stats[0]) || {};
+  el("queue").innerHTML = `
+    <h2>队列概况</h2>
+    <div class="cards">
+      <div class="card ${s.pending ? "warn" : "ok"}">
+        <div class="k">待提炼</div><div class="v">${esc(s.pending || 0)}</div>
+        <div class="sub">攒够一批才会被 ingest worker 消费</div></div>
+      <div class="card"><div class="k">累计入队</div><div class="v">${esc(s.total || 0)}</div>
+        <div class="sub">已消费 ${esc((s.total||0) - (s.pending||0))}</div></div>
+    </div>
+
+    <h2>待提炼消息</h2>
+    ${table(d.pending, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"role", label:"角色"},
+      {k:"sender_name", label:"发送者"},
+      {k:"text", label:"内容", cls:"wrap", len:200}
+    ], {empty:"队列是空的 —— 说明 worker 跟得上"})}
+
+    <h2>最近已消费</h2>
+    ${table(d.recent, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"sender_name", label:"发送者"},
+      {k:"text", label:"内容", cls:"wrap", len:120},
+      {k:"consumed_at", label:"消费", fmt:ts},
+      {k:"batch_id", label:"批次", cls:"num mono"}
+    ], {empty:"还没消费过"})}
+  `;
+}
+
+/* ------------------------------------------------------------------ 自检 */
+async function loadCheck(){
+  const d = await getJSON("/api/feedback");
+  el("check").innerHTML = `
+    <h2>自检运行记录</h2>
+    ${table(d.eval_runs, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"n_case", label:"用例", cls:"num"},
+      {k:"n_pass", label:"通过", cls:"num",
+       fmt:v => `<span style="color:${Number(v) >= 1 ? "var(--warn)" : "var(--bad)"}">${esc(v)}</span>`},
+      {k:"detail", label:"明细", cls:"wrap mono", len:160}
+    ], {empty:"还没有自检记录"})}
+
+    <h2>用例</h2>
+    ${table(d.eval_cases, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"name", label:"名称"},
+      {k:"layer", label:"层"},
+      {k:"expect_sub", label:"应包含", cls:"wrap", len:60},
+      {k:"expect_not", label:"不应包含", cls:"wrap", len:60}
+    ], {empty:"没有用例"})}
+
+    <h2>纠正记录</h2>
+    ${table(d.corrections, [
+      {k:"id", label:"#", cls:"num mono"},
+      {k:"ts", label:"时间", fmt:ts},
+      {k:"scope_id", label:"作用域", len:30, cls:"mono"},
+      {k:"user_text", label:"用户原话", cls:"wrap", len:120},
+      {k:"evidence", label:"证据", cls:"wrap", len:80},
+      {k:"penalized", label:"已惩罚"}
+    ], {empty:"没有纠正记录"})}
+  `;
+}
+
+/* ------------------------------------------------------------------ 调度 */
+const TABS = {
+  overview: loadOverview,
+  memories: loadMemories,
+  moods: loadMoods,
+  life: loadLife,
+  style: loadStyle,
+  ledger: loadLedger,
+  queue: loadQueue,
+  check: loadCheck
+};
+let CURRENT = "overview";
+
+function show(tab){
+  CURRENT = tab;
+  document.querySelectorAll("nav button").forEach(b =>
+    b.classList.toggle("on", b.dataset.tab === tab));
+  document.querySelectorAll("section").forEach(s =>
+    s.classList.toggle("on", s.id === tab));
+  TABS[tab]().catch(e => {
+    el(tab).innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  });
+}
+
+document.querySelectorAll("nav button").forEach(b => {
+  b.onclick = () => show(b.dataset.tab);
+});
+el("refresh").onclick = () => {
+  loadOverview().catch(e => { el("pills").innerHTML = `<span class="pill bad">${esc(e.message)}</span>`; });
+  show(CURRENT);
+};
+
+let timer = null;
+function schedule(){
+  if (timer) clearInterval(timer);
+  if (el("auto").checked) timer = setInterval(() => {
+    loadOverview().catch(() => {});
+    if (CURRENT !== "overview") show(CURRENT);
+  }, 10000);
+}
+el("auto").onchange = schedule;
+
+loadOverview().then(() => schedule()).catch(e => {
+  el("pills").innerHTML = `<span class="pill bad">连不上后端：${esc(e.message)}</span>`;
+});
+</script>
+</body>
+</html>

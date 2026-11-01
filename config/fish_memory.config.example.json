@@ -1,0 +1,55 @@
+{
+  "_说明": "复制到 /opt/astrbot/data/config/astrbot_plugin_fish_memory_config.json 后按需修改。没写的键会走程序内 DEFAULTS，不用全部列出。",
+
+  "master": {
+    "enabled": true,
+    "shadow_mode": false,
+    "enabled_scopes": [],
+    "owner_id": "123456789",
+    "public_scopes": [],
+    "public_readers": [],
+    "budget_chars": 400,
+    "budgets": {
+      "memory": 138,
+      "mood": 72,
+      "life": 110,
+      "style": 130,
+      "total": 400
+    },
+    "log_injections": true
+  },
+
+  "L1_memory": {
+    "enabled": true,
+    "k": 3,
+    "min_score": 0.12,
+    "freshness_halflife_days": 30.0
+  },
+
+  "L3_life": {
+    "enabled": true,
+    "tick_seconds": 1200,
+    "llm_activity_prob": 0.35,
+    "browse_enabled": true,
+    "browse_interval_seconds": 7200,
+    "browse_note_ttl_hours": 36,
+    "browse_max_chars": 1200
+  },
+
+  "ingest": {
+    "enabled": true,
+    "batch_size": 12,
+    "interval_seconds": 300,
+    "provider_id": "deepseek-chat",
+    "model": "deepseek-chat",
+    "heuristic_fallback": true,
+    "auto_share_categories": []
+  },
+
+  "persona_guard": {
+    "enabled": false,
+    "sha256": "",
+    "check_every_min": 10,
+    "auto_restore": false
+  }
+}
