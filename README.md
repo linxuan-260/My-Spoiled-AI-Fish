@@ -1,10 +1,12 @@
-# FISH-AI-OS
+# My-Spoiled-AI-Fish
 
 > 一个「会过日子」的 QQ 机器人人格系统：五层记忆、只读人格、可逆注入。
 
-**FISH-AI-OS** 不是又一个聊天机器人框架，而是一套**不改变人格、只增强上下文**的记忆中间件。它挂在 AstrBot 的 `on_llm_request` 上，每次调用模型前把「她记得什么、心情怎样、正在干嘛、说话什么样」拼进 system prompt，调用后原样还原。
+**My-Spoiled-AI-Fish**（肥鱼）不是又一个聊天机器人框架，而是一套**不改变人格、只增强上下文**的记忆中间件。它挂在 AstrBot 的 `on_llm_request` 上，每次调用模型前把「她记得什么、心情怎样、正在干嘛、说话什么样」拼进 system prompt，调用后原样还原。
 
 核心理念：**人格是只读的**。所有增强都是带 marker 的临时注入块，拿掉 marker 后 prompt 与注入前逐字节相同。
+
+> ⚠️ **警告**：请在使用前，将 Prompt 中的 QQ 替换为你自己的 QQ 号！否则你的 AI 女儿不仅不会理你，还会叫你「滚」，并质问你是谁！
 
 ---
 
@@ -187,7 +189,7 @@ bash scripts/check-secrets.sh
 
 ## 许可证
 
-- 本项目自身代码：**MIT**
+- 本项目自身代码：**MIT**。你可以随意使用代码，但请给自家 AI 吃点好的，别送去直播间赛博乞讨。
 - `plugins/astrbot_plugin_qzone`：**GPL-3.0**（上游 [Zhalslar/astrbot_plugin_qzone](https://github.com/Zhalslar/astrbot_plugin_qzone) 的修改版，遵循原许可证）
 
 详见 [LICENSES.md](LICENSES.md)。
