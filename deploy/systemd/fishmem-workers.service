@@ -1,0 +1,20 @@
+# 记忆 worker：ingest / life / daily_digest 三进程
+# fishmem_workers.sh 内部假设 ROOT=/opt/astrbot；换路径时 install.sh 会一并改掉。
+[Unit]
+Description=Fish Memory Workers (ingest/life/digest)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+Environment=TZ=Asia/Shanghai
+ExecStart=__APP_DIR__/tools/fishmem_workers.sh run
+Restart=always
+RestartSec=15
+TimeoutStopSec=20
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+# AstrBot 主服务
+# 路径占位符 __APP_DIR__ 由 deploy/install.sh 自动替换；
+# 手动安装时把它全文替换成你的实际目录（默认 /opt/astrbot）。
+[Unit]
+Description=AstrBot QQ Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Asia/Shanghai
+Environment=PATH=__APP_DIR__/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__APP_DIR__/.venv/bin/astrbot run
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

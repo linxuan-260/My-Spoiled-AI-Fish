@@ -1,0 +1,18 @@
+# 五层记忆面板（只监听 127.0.0.1:6186，对外请走 SSH 隧道）
+[Unit]
+Description=Fish Memory Web Panel (127.0.0.1:6186)
+After=network-online.target astrbot.service
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Asia/Shanghai
+ExecStart=__APP_DIR__/.venv/bin/python __APP_DIR__/tools/fishmem_web.py --no-open --port 6186
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -25,21 +25,18 @@
 ## 快速开始
 
 ```bash
-# 1. 放插件
-cp -r plugins/astrbot_plugin_fish_memory /opt/astrbot/data/plugins/
-cp -r plugins/astrbot_plugin_qzone        /opt/astrbot/data/plugins/
+# 1. 一条命令装完（插件 + tools + systemd 单元）
+sudo bash deploy/install.sh
 
 # 2. 配身份（必改）
-cp config/fish_memory.config.example.json \
-   /opt/astrbot/data/config/astrbot_plugin_fish_memory_config.json
-# 编辑 master.owner_id -> 你自己的 QQ
+sudo vi /opt/astrbot/data/config/astrbot_plugin_fish_memory_config.json
+#   master.owner_id  ->  你自己的 QQ
 
-# 3. 起 worker 与面板
-systemctl enable --now fishmem-workers fishmem-panel
-systemctl restart astrbot
+# 3. 启动
+sudo systemctl restart astrbot fishmem-panel fishmem-workers
 ```
 
-完整步骤见 **[docs/安装.md](docs/安装.md)**。
+完整步骤见 **[docs/安装.md](docs/安装.md)**，版本矩阵见 **[docs/依赖清单.md](docs/依赖清单.md)**。
 
 ---
 
@@ -142,12 +139,18 @@ tools/
   fishmem_web_ui.html           面板前端
   fishmem_starmap.html          记忆星图
   fishmem_workers.sh            ingest / life / digest 三进程管理
+deploy/
+  install.sh                    一键安装（插件 + tools + systemd）
+  systemd/                      三个服务单元
+  requirements.txt              额外依赖（只有 qzone 需要）
+  patches/patch_imgfix.py       可选：智谱多模态 400 的修复
 docs/
-  安装.md  架构.md  配置.md  防禁言.md
+  安装.md  架构.md  配置.md  防禁言.md  依赖清单.md
 config/
   fish_memory.config.example.json
 scripts/
   sync-from-server.sh           从服务器拉代码（本地开发用）
+  check-secrets.sh              推送前敏感信息扫描
 ```
 
 ## 文档
@@ -158,6 +161,8 @@ scripts/
 | [架构](docs/架构.md) | 五层模型、注入流水线、三个必须知道的历史坑 |
 | [配置](docs/配置.md) | 全部关键配置项与热重载边界 |
 | [防禁言](docs/防禁言.md) | 频率、节流、隐私外发、处置流程 |
+| [依赖清单](docs/依赖清单.md) | 已验证的版本矩阵与 19 个插件版本 |
+| [部署](deploy/README.md) | 一键安装、验证、回滚 |
 | [插件清单](docs/插件清单.md) | 本机装过哪些插件及版本 |
 
 ## 数据与隐私
