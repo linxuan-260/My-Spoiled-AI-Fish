@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover
 
 _bootstrap.add_path()
 
-from astrbot_plugin_fish_memory.config import on  # noqa: E402
+from astrbot_plugin_fish_memory.config import dget, on  # noqa: E402
 from astrbot_plugin_fish_memory.store import (  # noqa: E402
     dbutil, feedbackdb, lifedb, memorydb,
 )
@@ -36,6 +36,19 @@ def run_once(logger, cfg) -> dict:
             int(on(cfg, "L1_memory", "archive_after_days", default=90) or 90))
     except Exception as e:
         out["archived_error"] = str(e)
+
+    # 沉淀整理：反复想起、够重要的事升到 core（一直记着），太久没想起的降回去
+    try:
+        c = dget(cfg, "L1_memory", "consolidate")
+        out["consolidate"] = memorydb.consolidate(
+            min_importance=float(c.get("min_importance") or 0.6),
+            strong_importance=float(c.get("strong_importance") or 0.7),
+            min_access=int(c.get("min_access") or 3),
+            max_core=int(c.get("max_core") or 30),
+            demote_after_days=int(c.get("demote_after_days") or 120),
+        )
+    except Exception as e:
+        out["consolidate_error"] = str(e)
 
     try:
         out["notes_expired"] = lifedb.expire_notes()

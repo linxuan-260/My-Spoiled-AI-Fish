@@ -295,8 +295,16 @@ function renderPills(d){
 }
 
 /* ------------------------------------------------------------------ 记忆 */
-let memFilter = {kind:"all", status:"active", vis:"all", q:""};
+let memFilter = {kind:"all", status:"active", vis:"all", tier:"all", q:""};
 const VIS_LABEL = {private:"私有", owner:"本人", public:"共享", group:"群"};
+const TIER_LABEL = {core:"一直记着", normal:"普通"};
+
+function tierBadge(r){
+  const t = r.tier || "normal";
+  return t === "core"
+    ? `<span class="pill ok" title="沉淀记忆：与这句话无关也每轮注入">一直记着</span>`
+    : `<span class="muted">普通</span>`;
+}
 
 function visBadge(r){
   const v = r.visibility || "private";
@@ -308,7 +316,8 @@ function visBadge(r){
 
 async function loadMemories(){
   const qs = new URLSearchParams({kind:memFilter.kind, status:memFilter.status,
-                                  vis:memFilter.vis, q:memFilter.q, limit:"300"});
+                                  vis:memFilter.vis, tier:memFilter.tier,
+                                  q:memFilter.q, limit:"300"});
   const d = await getJSON("/api/memories?" + qs.toString());
   el("memories").innerHTML = `
     <div class="toolbar">
@@ -324,6 +333,10 @@ async function loadMemories(){
         ${["all","private","owner","public"].map(v =>
           `<option value="${v}" ${memFilter.vis===v?"selected":""}>${v==="all"?"全部可见性":(VIS_LABEL[v]||v)}</option>`).join("")}
       </select>
+      <select id="f-tier">
+        ${["all","core","normal"].map(t =>
+          `<option value="${t}" ${memFilter.tier===t?"selected":""}>${t==="all"?"全部层次":TIER_LABEL[t]}</option>`).join("")}
+      </select>
       <input type="text" id="f-q" placeholder="搜内容 / 分类 / 作用域" value="${esc(memFilter.q)}">
       <button id="f-go">筛选</button>
       <span class="muted">${d.count} 条</span>
@@ -334,6 +347,7 @@ async function loadMemories(){
       {k:"text", label:"内容", cls:"wrap"},
       {k:"category", label:"分类"},
       {k:"importance", label:"重要性", html:r => impBar(r.importance)},
+      {k:"tier", label:"层次", html:r => tierBadge(r)},
       {k:"scope_id", label:"作用域", len:26, cls:"mono"},
       {k:"visibility", label:"可见", html:r => visBadge(r)},
       {k:"created_at", label:"建立", fmt:ts},
@@ -346,11 +360,13 @@ async function loadMemories(){
     memFilter.kind = el("f-kind").value;
     memFilter.status = el("f-status").value;
     memFilter.vis = el("f-vis").value;
+    memFilter.tier = el("f-tier").value;
     memFilter.q = el("f-q").value.trim();
     loadMemories();
   };
   el("f-q").onkeydown = (e) => { if (e.key === "Enter") el("f-go").click(); };
   el("f-vis").onchange = () => { memFilter.vis = el("f-vis").value; loadMemories(); };
+  el("f-tier").onchange = () => { memFilter.tier = el("f-tier").value; loadMemories(); };
   el("memories").querySelectorAll("button[data-mid]").forEach(b => {
     b.onclick = () => markMemory(Number(b.dataset.mid), b.dataset.to);
   });

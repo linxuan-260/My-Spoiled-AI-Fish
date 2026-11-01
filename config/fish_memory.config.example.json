@@ -10,10 +10,10 @@
     "public_readers": [],
     "budget_chars": 400,
     "budgets": {
-      "memory": 138,
+      "memory": 168,
       "mood": 72,
       "life": 110,
-      "style": 130,
+      "style": 100,
       "total": 400
     },
     "log_injections": true
@@ -22,8 +22,21 @@
   "L1_memory": {
     "enabled": true,
     "k": 3,
+    "max_lines": 5,
+    "repeat_cooldown_min": 20,
     "min_score": 0.12,
-    "freshness_halflife_days": 30.0
+    "freshness_halflife_days": 30.0,
+    "core": {
+      "enabled": true,
+      "max_lines": 2
+    },
+    "consolidate": {
+      "min_importance": 0.6,
+      "strong_importance": 0.7,
+      "min_access": 3,
+      "max_core": 30,
+      "demote_after_days": 120
+    }
   },
 
   "L3_life": {

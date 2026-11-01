@@ -44,12 +44,13 @@ DEFAULTS: dict[str, Any] = {
         "public_readers": [],
         "budget_chars": 400,
         "budgets": {
-            # 合计 400。情绪层含一句必须保留的免责句，所以从 60 提到 72，
-            # 记忆层相应从 150 让到 138。
-            "memory": 138,
+            # 单层上限管「别超」，总量由 compose 兜底。实测（11-01 账本三天）：
+            # style 恒定 46 字、mood 52~68、life 58~110、memory 49~137。
+            # 所以把 style 用不上的额度让给 memory：那里要多装一段「一直记着的」。
+            "memory": 168,
             "mood": 72,
-            "life": 60,
-            "style": 130,
+            "life": 110,
+            "style": 100,
             "total": 400,
         },
         "marker_version": "1",
@@ -58,6 +59,22 @@ DEFAULTS: dict[str, Any] = {
     "L1_memory": {
         "enabled": True,
         "k": 3,
+        "max_lines": 5,               # 整块最多几行（预算才是硬约束）
+        # 同一条记忆这么短时间内不重复进「刚想起来的」，避免反复念同一件事
+        "repeat_cooldown_min": 20,
+        # 一直记着的那段：不检索，每轮都在
+        "core": {
+            "enabled": True,
+            "max_lines": 2,           # 最多两条，剩下的预算留给检索
+        },
+        # 沉淀整理：谁升进 core、谁降回去（daily_digest 每晚跑）
+        "consolidate": {
+            "min_importance": 0.6,
+            "strong_importance": 0.7,
+            "min_access": 3,
+            "max_core": 30,
+            "demote_after_days": 120,
+        },
         "weights": {
             "semantic": 0.18,
             "keyword": 0.46,

@@ -173,6 +173,98 @@ def archive_old(after_days: int = 90) -> int:
         return 0
 
 
+# ---------------------------------------------------------------- 沉淀 / 分层
+# core   = 一直记着的事：与这一句话说了什么无关，每轮都注入（l1_memory）
+# normal = 普通记忆：只有被检索到才出现
+#
+# 为什么要有这一层：检索出来的东西是「查到几条记录」，模型看到的是档案；
+# 沉淀下来的东西才是「本来就记得」。不是新的检索算法，是换一类东西进 prompt。
+
+CORE_KINDS = ("fact", "reflection", "lesson")
+
+CORE_DEFAULTS = {
+    "min_importance": 0.6,      # 升 core 的门槛
+    "strong_importance": 0.7,   # 重要度到这条线，不问被想起过几次
+    "min_access": 3,            # 否则要求至少被检索到过这么多次
+    "max_core": 30,
+    "demote_after_days": 120,   # 这么久没被检索到，就不再算「一直记着」
+}
+
+
+def consolidate(**kw) -> dict:
+    """把反复想起、够重要的事沉淀成 core；太久没想起的降回 normal。
+
+    只在 daily_digest 里跑（也可手动 `share_memory.py --consolidate`）。
+    幂等：同一份数据跑几次结果一样。
+    """
+    opt = dict(CORE_DEFAULTS)
+    opt.update({k: v for k, v in kw.items() if k in opt and v is not None})
+
+    out = {"promoted": 0, "demoted": 0, "core_total": 0}
+    p = db_file()
+    if not p.exists():
+        return out
+
+    kinds = ",".join("?" * len(CORE_KINDS))
+    try:
+        with dbutil.tx(p) as con:
+            # 1) 升：够重要，并且要么被反复想起，要么重要度本身就够高
+            cur = con.execute(
+                f"UPDATE memories SET tier='core' "
+                f"WHERE status='active' AND tier='normal' AND kind IN ({kinds}) "
+                f"AND importance >= ? AND (access_count >= ? OR importance >= ?)",
+                (*CORE_KINDS, float(opt["min_importance"]),
+                 int(opt["min_access"]), float(opt["strong_importance"])),
+            )
+            out["promoted"] = cur.rowcount or 0
+
+            # 2) 降：归档了，或者很久没被检索到（never accessed 的看创建时间）
+            cur = con.execute(
+                "UPDATE memories SET tier='normal' WHERE tier='core' AND ("
+                "status!='active' OR COALESCE(julianday(last_access), "
+                "julianday(created_at)) < julianday('now', ?))",
+                (f"-{int(opt['demote_after_days'])} days",),
+            )
+            out["demoted"] = cur.rowcount or 0
+
+            # 3) 封顶：超过 max_core 就按「重要度、被想起次数」留最好的
+            n = int(con.execute(
+                "SELECT count(*) FROM memories WHERE tier='core' AND status='active'"
+            ).fetchone()[0])
+            max_core = int(opt["max_core"] or 0)
+            if max_core > 0 and n > max_core:
+                con.execute(
+                    "UPDATE memories SET tier='normal' WHERE id IN ("
+                    " SELECT id FROM memories WHERE tier='core' AND status='active'"
+                    " ORDER BY importance ASC, access_count ASC LIMIT ?)",
+                    (n - max_core,),
+                )
+
+            out["core_total"] = int(con.execute(
+                "SELECT count(*) FROM memories WHERE tier='core' AND status='active'"
+            ).fetchone()[0])
+    except sqlite3.Error as e:
+        log.warning("沉淀整理失败：%s", e)
+    return out
+
+
+def set_tier(ids: list[int], tier: str = "core") -> int:
+    """人工改层（share_memory.py --core / --normal）。tier 只认 core / normal。"""
+    if not ids or tier not in ("core", "normal"):
+        return 0
+    try:
+        with dbutil.tx(db_file()) as con:
+            n = 0
+            for mid in ids:
+                cur = con.execute("UPDATE memories SET tier=? WHERE id=?",
+                                  (tier, int(mid)))
+                n += cur.rowcount or 0
+            return n
+    except sqlite3.Error as e:
+        log.warning("set_tier 失败：%s", e)
+        return 0
+
+
 def counts() -> dict:
     out = {"total": 0, "active": 0}
     p = db_file()

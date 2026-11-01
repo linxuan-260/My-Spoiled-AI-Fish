@@ -97,6 +97,69 @@ def retrieve(
         return []
 
 
+CORE_SCAN_MAX = 200
+
+
+def core_memories(
+    *,
+    scope_id: str = "*",
+    sender_id: str = "",
+    public_scopes: list[str] | tuple = (),
+    public_readers: list[str] | tuple = (),
+    limit: int = 2,
+) -> list[Hit]:
+    """沉淀层：与这句话无关也一直在的记忆（memories.tier='core'）。
+
+    和 retrieve() 的区别是本质的：这里没有 query。不按这句话检索、不算
+    keyword/bm25、不套时间衰减 —— 只按「够不够格一直记着」排序。
+    它回答的是「她本来就知道什么」，不是「这次查到了什么」。任何异常都返回 []。
+    """
+    try:
+        return _core(
+            scope_id=scope_id, sender_id=sender_id,
+            public_scopes=tuple(public_scopes or ()),
+            public_readers=tuple(public_readers or ()),
+            limit=max(0, int(limit)),
+        )
+    except Exception as e:
+        log.warning("沉淀层读取异常，按没有处理：%s", e)
+        return []
+
+
+def _core(*, scope_id, sender_id, public_scopes, public_readers, limit) -> list[Hit]:
+    if limit <= 0:
+        return []
+    p = ensure()
+    if not p.exists():
+        return []
+
+    con = dbutil.connect(p, readonly=True)
+    try:
+        rows = con.execute(
+            "SELECT id, kind, text, category, importance, access_count, created_at, "
+            "scope_id, status, visibility, meta FROM memories "
+            "WHERE tier='core' AND status='active' "
+            "ORDER BY importance DESC, access_count DESC, created_at ASC LIMIT ?",
+            (CORE_SCAN_MAX,),
+        ).fetchall()
+
+        out: list[Hit] = []
+        for r in rows:
+            if not _visible(r, scope_id, sender_id, public_scopes, public_readers):
+                continue
+            out.append(Hit(
+                mid=int(r["id"]), score=float(r["importance"]), kind=str(r["kind"]),
+                text=str(r["text"]), category=str(r["category"]),
+                importance=float(r["importance"]), created_at=str(r["created_at"]),
+                parts={"core": 1.0, "access": float(r["access_count"] or 0)},
+            ))
+            if len(out) >= limit:
+                break
+        return out
+    finally:
+        con.close()
+
+
 def _owner_of(row) -> str:
     try:
         meta = json.loads(row["meta"] or "{}")

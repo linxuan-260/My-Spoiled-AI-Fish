@@ -73,12 +73,30 @@ def test_budget_respected():
 
 
 def test_scope_isolation():
-    """A5：别的会话的记忆不能串进来。"""
-    fresh = _ctx("t5", scope="brand-new-scope-never-seen")
+    """A5：别的会话的私有记忆不能串进来。
+
+    沉淀层（tier='core'）是「一直记着」的，和这句话无关也会出现，
+    所以判据不是「有没有注入块」，而是「有没有别的会话的私有记忆」。
+    """
+    from astrbot_plugin_fish_memory.store import dbutil, memorydb
+
+    scope = "brand-new-scope-never-seen"
+    fresh = _ctx("t5", scope=scope)
     res = compose.run(BASE_PROMPT, fresh, CFG)
     assert markers.strip_all(res["prompt"]) == markers.strip_all(BASE_PROMPT)
-    # 没有记忆时，memory 块不应该出现
-    assert not any(b.layer == "memory" for b in res["blocks"])
+
+    body = markers.extract(res["prompt"], "memory") or ""
+    leaked = []
+    with dbutil.ro(memorydb.db_file()) as con:
+        if con is not None:
+            for r in con.execute(
+                    "SELECT text FROM memories WHERE status='active' "
+                    "AND visibility='private' AND scope_id NOT IN ('*','') "
+                    "AND scope_id != ? LIMIT 300", (scope,)):
+                t = (r[0] or "")[:12]
+                if t and t in body:
+                    leaked.append(t)
+    assert not leaked, f"串了别的会话的记忆：{leaked[:3]}"
 
 
 def test_shadow_mode_injects_nothing():

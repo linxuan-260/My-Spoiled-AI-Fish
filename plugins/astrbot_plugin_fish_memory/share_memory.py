@@ -5,6 +5,9 @@
     /opt/astrbot/.venv/bin/python share_memory.py --list --vis private --limit 30
     /opt/astrbot/.venv/bin/python share_memory.py --public 42,43
     /opt/astrbot/.venv/bin/python share_memory.py --private 42
+    /opt/astrbot/.venv/bin/python share_memory.py --core 42,43
+    /opt/astrbot/.venv/bin/python share_memory.py --normal 42
+    /opt/astrbot/.venv/bin/python share_memory.py --consolidate
     /opt/astrbot/.venv/bin/python share_memory.py --backfill-owner
     /opt/astrbot/.venv/bin/python share_memory.py --apply-shared-scopes
 
@@ -14,7 +17,11 @@
     public   共享层，所有会话可见
     group    预留，未使用
 
-只改 memories 的 visibility/meta 两列，不动正文、不动人格、不动其它层。
+层次语义（memories.tier）：
+    core     一直记着：与这句话说了什么无关，每轮都注入（不复述）
+    normal   普通记忆：只有被这句检索到才出现
+
+只改 memories 的 visibility / meta / tier 三列，不动正文、不动人格、不动其它层。
 """
 
 from __future__ import annotations
@@ -62,11 +69,16 @@ def stats() -> None:
             "SELECT count(*) FROM memories WHERE status='active' "
             "AND meta LIKE '%owner_id%'").fetchone()[0]
         print("带 owner_id 的：", owned)
+        print("按层次：")
+        for r in con.execute(
+                "SELECT tier, count(*) c FROM memories WHERE status='active' "
+                "GROUP BY tier ORDER BY c DESC").fetchall():
+            print("  %-8s %s" % (r[0], r[1]))
 
 
 def listing(vis: str | None, limit: int) -> None:
     p = memorydb.ensure()
-    sql = ("SELECT id, visibility, scope_id, category, importance, substr(text,1,40) t, meta "
+    sql = ("SELECT id, visibility, tier, scope_id, category, importance, substr(text,1,40) t, meta "
            "FROM memories WHERE status='active'")
     args: list = []
     if vis:
@@ -77,8 +89,9 @@ def listing(vis: str | None, limit: int) -> None:
     with dbutil.ro(p) as con:
         for r in con.execute(sql, args):
             own = _meta(r["meta"]).get("owner_id", "")
-            print("%-5s %-8s %-22s %-10s %-4s own=%-11s %s" % (
-                r["id"], r["visibility"], (r["scope_id"] or "")[-22:], r["category"],
+            print("%-5s %-8s %-6s %-22s %-10s %-4s own=%-11s %s" % (
+                r["id"], r["visibility"], r["tier"] or "normal",
+                (r["scope_id"] or "")[-22:], r["category"],
                 r["importance"], own, (r["t"] or "").replace("\n", " ")))
 
 
@@ -152,6 +165,9 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=30)
     ap.add_argument("--public", default="")
     ap.add_argument("--private", default="")
+    ap.add_argument("--core", default="")
+    ap.add_argument("--normal", default="")
+    ap.add_argument("--consolidate", action="store_true")
     ap.add_argument("--backfill-owner", action="store_true")
     ap.add_argument("--apply-shared-scopes", action="store_true")
     a = ap.parse_args(argv)
@@ -170,8 +186,23 @@ def main(argv=None) -> int:
     if a.private:
         ids = [int(x) for x in a.private.replace(" ", "").split(",") if x]
         print("设为 private：", _set(ids, "private", note="manual"))
-    if not any((a.stats, a.list, a.public, a.private, a.backfill_owner,
-                a.apply_shared_scopes)):
+    if a.core:
+        ids = [int(x) for x in a.core.replace(" ", "").split(",") if x]
+        print("设为 core（一直记着）：", memorydb.set_tier(ids, "core"))
+    if a.normal:
+        ids = [int(x) for x in a.normal.replace(" ", "").split(",") if x]
+        print("设为 normal：", memorydb.set_tier(ids, "normal"))
+    if a.consolidate:
+        c = dget(_cfg(), "L1_memory", "consolidate")
+        print("沉淀整理：", memorydb.consolidate(
+            min_importance=float(c.get("min_importance") or 0.6),
+            strong_importance=float(c.get("strong_importance") or 0.7),
+            min_access=int(c.get("min_access") or 3),
+            max_core=int(c.get("max_core") or 30),
+            demote_after_days=int(c.get("demote_after_days") or 120),
+        ))
+    if not any((a.stats, a.list, a.public, a.private, a.core, a.normal,
+                a.consolidate, a.backfill_owner, a.apply_shared_scopes)):
         ap.print_help()
     return 0
 

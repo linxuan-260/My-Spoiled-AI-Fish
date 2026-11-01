@@ -207,3 +207,104 @@ def test_archive_old_keeps_facts():
         st = {r[0]: r[1] for r in con.execute(
             "SELECT id, status FROM memories WHERE id IN (?,?)", (old, keep))}
     assert st[old] == "archived" and st[keep] == "active"
+
+
+# ---------------------------------------------------------------- 沉淀层
+# 「真记得」和「翻旧账」的区别：一直记着的（core）与这句话无关也一直在；
+# 检索结果只在这一句命中时出现，而且说完就往下走。
+
+def _cfg():
+    """默认配置的一份副本，改它不影响别人。"""
+    import copy
+
+    from astrbot_plugin_fish_memory.config import DEFAULTS, Node
+
+    return Node(copy.deepcopy(DEFAULTS))
+
+
+def _ctx_for(scope: str, text: str, msg_id: str):
+    return budget.TurnCtx(
+        scope_id=scope, umo="aiocqhttp:GroupMessage:" + scope,
+        user_text=text, sender_id="1000000000", msg_id=msg_id,
+    )
+
+
+def _tier(mid: int) -> str:
+    with dbutil.ro(memorydb.db_file()) as con:
+        row = con.execute("SELECT tier FROM memories WHERE id=?", (mid,)).fetchone()
+    return str(row[0]) if row else ""
+
+
+def test_consolidate_promotes_important_facts():
+    core = memorydb.add("fact", "主人是退伍军人", category="profile",
+                        importance=0.9, scope_id="core-scope")
+    trivia = memorydb.add("episode", "今天中午吃了黄焖鸡", category="life",
+                          importance=0.3, scope_id="core-scope")
+    r = memorydb.consolidate()
+    assert r["promoted"] >= 1, r
+    assert _tier(core) == "core"
+    assert _tier(trivia) == "normal", "episode 是经历，不是「一直记着」的事"
+
+
+def test_l1_writes_settled_and_recalled_sections():
+    from astrbot_plugin_fish_memory.layers import l1_memory
+
+    memorydb.add("fact", "爹从事科研工作", category="profile", importance=0.9,
+                 scope_id="l1-scope")
+    memorydb.add("episode", "刚才说到火锅很好吃", category="life", importance=0.2,
+                 scope_id="l1-scope")
+    memorydb.consolidate()
+
+    block, ids = l1_memory.build(_ctx_for("l1-scope", "火锅好吃吗", "l1-a"), _cfg())
+    assert block is not None, "应该产出记忆块"
+    assert "【一直记着的】" in block.body, block.body
+    assert "爹从事科研工作" in block.body
+    assert "【刚想起来的】" in block.body, block.body
+    assert "火锅" in block.body
+    assert len(block.body) <= 168, f"超 memory 预算：{len(block.body)}"
+    assert ids, "注入的记忆 id 要进账本"
+
+
+def test_l1_settled_needs_no_query_match():
+    from astrbot_plugin_fish_memory.layers import l1_memory
+
+    block, _ = l1_memory.build(_ctx_for("l1-scope", "qwertyuiop", "l1-b"), _cfg())
+    assert block is not None
+    assert "爹从事科研工作" in block.body, "一直记着的不该依赖这一句说什么"
+    assert "【刚想起来的】" not in block.body, "没命中就不该有检索段"
+
+
+def test_l1_repeat_cooldown_skips_recent():
+    from astrbot_plugin_fish_memory.layers import l1_memory
+
+    mid = memorydb.add("episode", "昨晚群里聊到火锅底料", category="life",
+                       importance=0.2, scope_id="cool-scope")
+    first, _ = l1_memory.build(_ctx_for("cool-scope", "火锅底料好辣", "c1"), _cfg())
+    assert first is not None and "火锅底料" in first.body
+
+    ledger.write(scope_id="cool-scope", umo="u", layer="memory", memory_ids=[mid],
+                 block_chars=len(first.body), total_chars=len(first.body),
+                 shadow=False, query="火锅底料好辣")
+    second, _ = l1_memory.build(_ctx_for("cool-scope", "火锅底料好辣", "c2"), _cfg())
+    assert second is None or "火锅底料" not in second.body, "刚说过的不该隔一句又说"
+
+
+def test_consolidate_demotes_stale():
+    mid = memorydb.add("fact", "很久没想起的旧事", category="general",
+                       importance=0.9, scope_id="old-scope")
+    memorydb.consolidate()
+    assert _tier(mid) == "core"
+    with dbutil.tx(memorydb.db_file()) as con:
+        con.execute("UPDATE memories SET created_at=?, last_access=? WHERE id=?",
+                    ("2020-01-01T00:00:00+08:00", "2020-01-01T00:00:00+08:00", mid))
+    r = memorydb.consolidate(demote_after_days=30)
+    assert r["demoted"] >= 1, r
+    assert _tier(mid) == "normal"
+
+
+def test_consolidate_caps_core_total():
+    for i in range(5):
+        memorydb.add("fact", f"封顶测试事实{i}", importance=0.9, scope_id="cap-scope")
+    r = memorydb.consolidate(max_core=2)
+    assert r["core_total"] <= 2, r
+    memorydb.consolidate(max_core=30)  # 还原，别把前面的 core 留在外面

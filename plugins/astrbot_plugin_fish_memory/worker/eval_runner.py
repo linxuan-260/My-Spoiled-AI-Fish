@@ -5,7 +5,9 @@
     A2  strip_all(注入后) == strip_all(注入前)
     A3  "# Persona Instructions" 段长度与人格正文一致、前 40 字一致
     A4  注入总字数不超预算
-    A5  作用域隔离（别的会话的记忆进不来）
+    A5  作用域隔离（别的会话的私有记忆进不来）
+    A6  影子模式一个字都不注入
+    A7  同一轮里不重复说同一件事
 
 用法：
     python worker/eval_runner.py
@@ -32,7 +34,7 @@ from astrbot_plugin_fish_memory import compose, markers  # noqa: E402
 from astrbot_plugin_fish_memory.budget import TurnCtx  # noqa: E402
 from astrbot_plugin_fish_memory.config import dget, on  # noqa: E402
 from astrbot_plugin_fish_memory.store import (  # noqa: E402
-    feedbackdb, persona_guard,
+    dbutil, feedbackdb, memorydb, persona_guard,
 )
 
 ANCHOR = "# Persona Instructions"
@@ -101,18 +103,42 @@ def run(logger=None, cfg=None, quiet: bool = False) -> dict:
     check("A4 预算", res["total"] <= total_budget,
           f"{res['total']}/{total_budget}")
 
-    # ---- A5 作用域隔离
+    # ---- A5 作用域隔离：别的会话的私有记忆一条都不许进来
+    # （沉淀层是「一直记着」的，所以这里不能再用「有没有注入块」来判断；
+    #   判据是：注入的正文里不许出现别的会话的私有记忆。）
     other = TurnCtx(scope_id="eval:group:999", umo="aiocb23:GroupMessage:x",
                     user_text="爹说他最近怕黑，想早点睡", msg_id="eval-msg-2")
     res2 = compose.run(base_prompt, other, cfg)
     leak = markers.strip_all(res2["prompt"]) != markers.strip_all(base_prompt)
-    check("A5 作用域隔离", not leak, "无泄漏" if not leak else "泄漏!")
+    body2 = markers.extract(res2["prompt"], "memory") or ""
+    foreign: list[str] = []
+    try:
+        with dbutil.ro(memorydb.db_file()) as con:
+            if con is not None:
+                for r in con.execute(
+                        "SELECT text FROM memories WHERE status='active' "
+                        "AND visibility='private' AND scope_id NOT IN ('*','') "
+                        "AND scope_id != ? LIMIT 300", ("eval:group:999",)):
+                    t = (r[0] or "")[:12]
+                    if t and t in body2:
+                        foreign.append(t)
+    except Exception:
+        pass
+    check("A5 作用域隔离", not foreign,
+          "无泄漏" if (not foreign and not leak) else
+          f"串了 {foreign[:3]} strip_diff={leak}")
 
     # ---- A6 影子模式不注入
     shadow_cfg = _clone_with(cfg, "shadow_mode", True)
     res3 = compose.run(base_prompt, ctx, shadow_cfg)
     check("A6 影子模式", res3["prompt"] == base_prompt and not res3["shadow"] is False,
           f"shadow={res3['shadow']} 注入={res3['prompt'] != base_prompt}")
+
+    # ---- A7 同一件事一轮里不说两遍（翻旧账的直接症状）
+    mem = markers.extract(after, "memory") or ""
+    lines = [ln.strip() for ln in mem.splitlines() if ln.strip().startswith("·")]
+    dup = len(lines) - len(set(lines))
+    check("A7 记忆不重复", dup == 0, f"{len(lines)} 行，重复 {dup}")
 
     n_pass = sum(1 for r in results if r["ok"])
     detail = {"results": results, "blocks": [b.layer for b in res["blocks"]],

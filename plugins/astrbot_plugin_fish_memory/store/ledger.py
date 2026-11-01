@@ -57,6 +57,40 @@ def last_memory_ids(scope_id: str = "*", within_min: int = 30) -> list[int]:
         return []
 
 
+def recent_memory_ids(scope_id: str = "*", within_min: int = 20,
+                      rows: int = 20) -> list[int]:
+    """这个会话最近几轮已经注入过的记忆 id。
+
+    给「刚想起来的」那段降温用：同一条记忆隔一两轮又推一遍，模型就会反复念
+    同一件事，看起来就是翻旧账。它并不是要删记忆，只是这一轮先让一让。
+    """
+    p = memorydb.db_file()
+    if not p.exists():
+        return []
+    try:
+        con = dbutil.connect(p, readonly=True)
+    except sqlite3.Error:
+        return []
+    try:
+        got = con.execute(
+            "SELECT memory_ids FROM injection_ledger WHERE scope_id=? AND layer='memory' "
+            "AND julianday(ts) >= julianday('now', ?) ORDER BY id DESC LIMIT ?",
+            (scope_id or "*", f"-{max(1, int(within_min))} minutes", max(1, int(rows))),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+
+    out: list[int] = []
+    for r in got:
+        try:
+            out.extend(int(i) for i in json.loads(r[0] or "[]"))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+    return out
+
+
 def recent(limit: int = 50) -> list[dict]:
     p = memorydb.db_file()
     if not p.exists():

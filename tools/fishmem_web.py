@@ -225,16 +225,36 @@ def api_memories(params: dict) -> dict:
     if vis and vis != "all":
         where.append("visibility=?")
         args.append(vis)
+    # 层次过滤（core=一直记着 / normal=普通）单独拎出来，旧库补不了列时能退回
+    tier = (params.get("tier") or "").strip()
+    tier_where = ["tier=?"] if tier in ("core", "normal") else []
+    tier_args = [tier] if tier_where else []
     q = (params.get("q") or "").strip()
     if q:
         where.append("(text LIKE ? OR category LIKE ? OR scope_id LIKE ?)")
-        args.extend([f"%{q}%"] * 3)
-    sql = ("SELECT id, kind, text, category, importance, created_at, last_access, "
-           "access_count, status, source, scope_id, visibility FROM memories")
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY id DESC LIMIT ?"
-    rows = _q("memory", "memory.db", sql, args + [limit])
+        args.extend([f"%{q}%" for _ in range(3)])
+    cols = ("id, kind, text, category, importance, created_at, last_access, "
+            "access_count, status, source, scope_id, visibility")
+
+    def run(extra_where: list[str], extra_args: list):
+        sql = f"SELECT {cols}, tier FROM memories"
+        w = where + extra_where
+        if w:
+            sql += " WHERE " + " AND ".join(w)
+        sql += " ORDER BY id DESC LIMIT ?"
+        return _q("memory", "memory.db", sql, args + extra_args + [limit])
+
+    try:
+        rows = run(tier_where, tier_args)
+    except sqlite3.Error:
+        # 旧库还没补 tier 列（插件没启动过）：面板不该因此 500
+        sql = f"SELECT {cols} FROM memories"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY id DESC LIMIT ?"
+        rows = _q("memory", "memory.db", sql, args + [limit])
+        for r in rows:
+            r["tier"] = "normal"
     return {"rows": rows, "count": len(rows), "limit": limit}
 
 

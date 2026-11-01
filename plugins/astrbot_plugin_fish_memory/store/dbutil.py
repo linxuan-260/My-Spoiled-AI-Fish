@@ -12,7 +12,7 @@ from pathlib import Path
 log = logging.getLogger("fishmem.db")
 
 TZ = _dt.timezone(_dt.timedelta(hours=8))
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2   # 2：memories 增加 tier（core / normal）
 
 # ------------------------------------------------------------------ 时间
 
@@ -159,13 +159,17 @@ CREATE TABLE IF NOT EXISTS memories (
               CHECK (visibility IN ('private','group','public','owner')),
   scope_id    TEXT NOT NULL DEFAULT '*',
   merged_into INTEGER REFERENCES memories(id),
-  decayed_at  TEXT
+  decayed_at  TEXT,
+  -- core  = 沉淀下来的记忆：与这一句话无关也一直在（「本来就知道的」）
+  -- normal= 普通记忆：只有被这句检索到才出现
+  tier        TEXT NOT NULL DEFAULT 'normal'
 );
 CREATE INDEX IF NOT EXISTS idx_mem_status   ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_mem_scope    ON memories(scope_id, status);
 CREATE INDEX IF NOT EXISTS idx_mem_created  ON memories(created_at);
 CREATE INDEX IF NOT EXISTS idx_mem_kind     ON memories(kind, status);
 CREATE INDEX IF NOT EXISTS idx_mem_cat      ON memories(category);
+CREATE INDEX IF NOT EXISTS idx_mem_tier     ON memories(tier, status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   bigram,
@@ -405,6 +409,30 @@ SCHEMAS = {
     "feedback": DDL_FEEDBACK,
 }
 
+# 老库补列：CREATE TABLE IF NOT EXISTS 不会动已存在的表，只能显式 ALTER。
+# SQLite 的 ADD COLUMN 要求有常量默认值，这里给的就是。
+_ADD_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "memory": [
+        ("tier", "TEXT NOT NULL DEFAULT 'normal'"),
+    ],
+}
+
+
+def _migrate(con: sqlite3.Connection, key: str) -> None:
+    """把旧表补到当前 schema。幂等：列在了就跳过。"""
+    spec = _ADD_COLUMNS.get(key)
+    if not spec:
+        return
+    for col, decl in spec:
+        try:
+            cols = {r[1] for r in con.execute("PRAGMA table_info(memories)")}
+        except sqlite3.Error:
+            return
+        if not cols or col in cols:
+            continue
+        con.execute(f"ALTER TABLE memories ADD COLUMN {col} {decl}")
+        log.info("memory.db 补列 %s（%s）", col, decl)
+
 
 def ensure_schema(db_file: Path, ddl: str, key: str) -> None:
     key_s = str(db_file)
@@ -415,7 +443,11 @@ def ensure_schema(db_file: Path, ddl: str, key: str) -> None:
             return
         con = connect(db_file)
         try:
+            # 老库得先补列：DDL 里有基于新列的索引，缺列时 executescript 会失败
+            if table_exists(con, "memories"):
+                _migrate(con, key)
             con.executescript(ddl)
+            _migrate(con, key)
             con.execute(
                 "INSERT INTO meta(k, v) VALUES('schema_version', ?) "
                 "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
