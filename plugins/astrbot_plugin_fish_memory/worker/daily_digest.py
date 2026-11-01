@@ -55,6 +55,15 @@ def run_once(logger, cfg) -> dict:
     except Exception as e:
         out["notes_error"] = str(e)
 
+    # 发言判断记录只留最近两周（每天几百条，不清理会一直长）
+    try:
+        from astrbot_plugin_fish_memory.store import gatedb
+
+        out["gate_pruned"] = gatedb.prune(
+            int(on(cfg, "gate", "prune_days", default=14) or 14))
+    except Exception as e:
+        out["gate_prune_error"] = str(e)
+
     try:
         if on(cfg, "L5_feedback", "sub", "daily_health", default=True):
             out["health"] = str(feedbackdb.write_health())

@@ -5,6 +5,9 @@
                          req 是 dataclass、只在内存里，人格表一个字节都不碰。
     on_decorating_result 发送前清洗文本。
 
+另外做一件事：发言判断（gate.py）接管 AstrBot 自带的「主动回复」——
+把 `random() < 0.2` 的骰子换成看场合的判断，判断结果写进 speech_gate 表。
+
 设计底线：
     1. 本插件从不写 personas 表。唯一例外是 persona_guard.auto_restore，
        默认关闭。
@@ -23,7 +26,7 @@ from astrbot.api.message_components import Plain
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star, register
 
-from . import compose, markers
+from . import compose, gate, markers
 from .budget import TurnCtx
 from .config import cfgstore, dget, on
 from .store import (bootstrap as boot, feedbackdb, ingest, ledger, mooddb,
@@ -38,7 +41,7 @@ SEEN_MAX = 512
     "astrbot_plugin_fish_memory",
     "local",
     "五层记忆增强（记忆/情绪/生活/表达/反馈）。人格只读，增强全部走内存 system_prompt 追加。",
-    "1.0.0",
+    "1.1.1",
 )
 class FishMemoryPlugin(Star):
     def __init__(self, context: Context, config: dict | None = None):
@@ -64,6 +67,13 @@ class FishMemoryPlugin(Star):
                              str(p.get("current"))[:16], str(p.get("expected"))[:16])
         except Exception:
             logger.exception("[fishmem] 启动引导失败（插件继续加载，功能降级）")
+
+        # 发言判断：把 AstrBot 主动回复的骰子换成判断（找不到目标类就原样不动）
+        try:
+            self._gate_patched = gate.install_patch(logger, cfgstore)
+        except Exception:
+            self._gate_patched = False
+            logger.exception("[fishmem] 发言判断接管失败（自动回复保持原生行为）")
 
     # ================================================================ 钩子
     @filter.on_llm_request()
@@ -93,6 +103,16 @@ class FishMemoryPlugin(Star):
 
         self._maybe_guard(cfg)
         self._maybe_update_mood(cfg, ctx)
+
+        # 听话：主人说「闭嘴」就真闭嘴（私聊里说的管所有会话）
+        try:
+            act = gate.directive_action(cfg, ctx.scope_id, ctx.sender_id, ctx.user_text)
+            if act:
+                logger.info("[fishmem] 发言判断：%s（%s）%s",
+                            act.get("action"), act.get("keyword"),
+                            ("到 " + str(act.get("until"))) if act.get("until") else "")
+        except Exception:
+            logger.exception("[fishmem] 指令识别失败（忽略）")
 
         prompt = getattr(req, "system_prompt", "") or ""
         res = compose.run(prompt, ctx, cfg, cache=self._blocks_cache)

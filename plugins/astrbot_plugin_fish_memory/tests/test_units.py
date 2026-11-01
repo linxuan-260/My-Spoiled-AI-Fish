@@ -308,3 +308,186 @@ def test_consolidate_caps_core_total():
     r = memorydb.consolidate(max_core=2)
     assert r["core_total"] <= 2, r
     memorydb.consolidate(max_core=30)  # 还原，别把前面的 core 留在外面
+
+
+# ---------------------------------------------------------------- 发言判断
+def _scene_msg(ts, text="", sender="群友", at_ids=(), reply_to="", is_image=False):
+    from astrbot_plugin_fish_memory.store.gatedb import SceneMsg
+
+    return SceneMsg(ts=float(ts), sender_id="1", sender=sender, text=text,
+                    at_ids=list(at_ids), reply_to=reply_to, is_image=is_image)
+
+
+def _at_hour(hour: int) -> float:
+    """本地时间 hour:30 的 epoch（judge 用本地小时判深夜）。"""
+    import datetime as _dt
+
+    d = _dt.datetime.now(dbutil.TZ).replace(hour=int(hour), minute=30,
+                                           second=0, microsecond=0)
+    return d.timestamp()
+
+
+def _judge(**kw):
+    from astrbot_plugin_fish_memory import gate
+
+    base = dict(text="今天中午吃什么", at_ids=(), reply_to="", is_image=False,
+                scene=[], last_speak_ts=None, cfg=_cfg(), interests=(),
+                now_ts=_at_hour(15), self_id="999")
+    base.update(kw)
+    return gate.judge(**base)
+
+
+def test_gate_quiet_hours():
+    d = _judge(now_ts=_at_hour(3))
+    assert not d.speak and d.reason == "深夜", d
+
+
+def test_gate_cooldown_after_speaking():
+    now = _at_hour(15)
+    d = _judge(now_ts=now, last_speak_ts=now - 5 * 60)
+    assert not d.speak and d.reason == "刚说过话", d
+
+
+def test_gate_unanswered_hushes():
+    now = _at_hour(15)
+    last = now - 15 * 60
+    scene = [_scene_msg(now - 10 * 60, "他们聊得很起劲")]
+    d = _judge(now_ts=now, last_speak_ts=last, scene=scene)
+    assert not d.speak and d.reason == "上次开口没人接", d
+
+
+def test_gate_unanswered_cleared_when_someone_wakes_her():
+    now = _at_hour(15)
+    last = now - 15 * 60
+    scene = [_scene_msg(now - 10 * 60, "肥鱼你刚才说啥")]
+    d = _judge(now_ts=now, last_speak_ts=last, scene=scene, text="肥鱼你刚才说啥")
+    assert d.speak and d.reason == "提到我", d
+
+
+def test_gate_sensitive_topic_hushes():
+    d = _judge(text="他妈妈住院了，可能要手术")
+    assert not d.speak and d.reason == "话题敏感", d
+
+
+def test_gate_quarrel_hushes():
+    now = _at_hour(15)
+    scene = [_scene_msg(now - 30, "你有病吧"), _scene_msg(now - 20, "滚 傻逼")]
+    d = _judge(now_ts=now, text="别吵了", scene=scene)
+    assert not d.speak and d.reason in ("在吵", "话题敏感"), d
+
+
+def test_gate_serious_topic_hushes():
+    d = _judge(text="明天答辩的简历还没改完")
+    assert not d.speak and d.reason == "在说正事", d
+
+
+def test_gate_at_others_hushes():
+    d = _judge(text="你看这个", at_ids=["123"])
+    assert not d.speak and d.reason == "在跟别人说话", d
+
+
+def test_gate_hot_room_hushes():
+    now = _at_hour(15)
+    scene = [_scene_msg(now - 30 + i * 5, f"消息{i}") for i in range(4)]
+    d = _judge(now_ts=now, text="哈哈哈", scene=scene)
+    assert not d.speak and d.reason == "聊得正热", d
+
+
+def test_gate_mentions_me_speaks():
+    d = _judge(text="肥鱼今天怎么不说话")
+    assert d.speak and d.reason == "提到我", d
+
+
+def test_gate_interest_speaks():
+    d = _judge(text="今天又去打鼓了", interests=[("打鼓", 0.8)])
+    assert d.speak and d.reason == "聊到我感兴趣的", d
+
+
+def test_gate_question_speaks():
+    d = _judge(text="有人知道这个怎么报考吗？")
+    assert d.speak and d.reason == "有人问了句没人接的话", d
+
+
+def test_gate_default_hush():
+    d = _judge(text="我裂开了")
+    assert not d.speak and d.reason == "没什么要接的", d
+
+
+def test_gate_parse_content():
+    from astrbot_plugin_fish_memory.store.gatedb import parse_content
+
+    raw = ('{"type":"user","message":[{"type":"at","user_id":"40004","name":"x"},'
+           '{"type":"reply","message_id":1,"sender_name":"爱吃白饭的肥鱼","text":"y"},'
+           '{"type":"plain","text":"在吗"}]}')
+    p = parse_content(raw)
+    assert p["at_ids"] == ["40004"], p
+    assert "肥鱼" in p["reply_to"], p
+    assert p["text"] == "在吗", p
+    assert not p["is_image"], p
+
+    img = '{"type":"user","message":[{"type":"plain","text":"[Image]"}]}'
+    assert parse_content(img)["is_image"], "图片占位要认出来"
+
+
+def test_gate_writes_decision_log():
+    from astrbot_plugin_fish_memory import gate
+    from astrbot_plugin_fish_memory.store import gatedb
+
+    d = gate.decide("gate-scope", text="肥鱼在吗", cfg=_cfg(), self_id="999",
+                    now_ts=_at_hour(15))
+    assert d.speak, d
+    rows = gatedb.recent(5, scope_id="gate-scope")
+    assert rows and rows[0]["reason"] == "提到我", rows
+
+
+def _cfg_owner(owner: str = "10001"):
+    """带主人的一份默认配置（「闭嘴」只认主人）。"""
+    import copy
+
+    from astrbot_plugin_fish_memory.config import DEFAULTS, Node
+
+    d = copy.deepcopy(DEFAULTS)
+    d["master"]["owner_id"] = owner
+    return Node(d)
+
+
+def test_gate_owner_says_shut_up():
+    from astrbot_plugin_fish_memory import gate
+
+    cfg = _cfg_owner()
+    scope = "aiocqhttp:GroupMessage:20002"
+    now = _at_hour(15)
+    act = gate.directive_action(cfg, scope, "10001", "别说话了", now)
+    assert act and act["action"] == "mute", act
+    d = gate.decide(scope, text="哈哈哈", cfg=cfg, now_ts=now, self_id="999")
+    assert not d.speak and d.reason == "被要求闭嘴", d
+
+
+def test_gate_mute_only_owner():
+    from astrbot_plugin_fish_memory import gate
+
+    assert gate.directive_action(_cfg_owner(), "s", "123456", "闭嘴", _at_hour(15)) is None
+
+
+def test_gate_owner_says_speak_again():
+    from astrbot_plugin_fish_memory import gate
+
+    cfg = _cfg_owner()
+    scope = "aiocqhttp:FriendMessage:10001"
+    gate.directive_action(cfg, scope, "10001", "闭嘴", _at_hour(15))
+    act = gate.directive_action(cfg, scope, "10001", "可以说了", _at_hour(15))
+    assert act and act["action"] == "unmute", act
+
+
+def test_gate_mute_escalates_when_repeated():
+    from astrbot_plugin_fish_memory import gate
+    from astrbot_plugin_fish_memory.store import gatedb
+
+    cfg = _cfg_owner()
+    n0 = gatedb.count_reason("被要求闭嘴", hours=24)
+    a1 = gate.directive_action(cfg, "esc-scope", "10001", "安静", _at_hour(15))
+    a2 = gate.directive_action(cfg, "esc-scope", "10001", "安静", _at_hour(15))
+    exp1 = 30 * min(2 ** min(n0, 3), 8)
+    exp2 = 30 * min(2 ** min(n0 + 1, 3), 8)
+    assert a1 and a2 and a1["minutes"] == exp1 and a2["minutes"] == exp2, (n0, a1, a2)
+    assert a2["minutes"] >= a1["minutes"], (a1, a2)

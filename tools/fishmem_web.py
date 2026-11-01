@@ -166,6 +166,13 @@ def api_overview() -> dict:
         last_inject = _rows(mem, "SELECT ts, SUM(block_chars) chars, MAX(total_chars) total "
                                  "FROM injection_ledger GROUP BY ts, umo "
                                  "ORDER BY ts DESC LIMIT 1") if mem else []
+        gate_today = _rows(mem, "SELECT decision, COUNT(*) n FROM speech_gate "
+                                "WHERE date(ts)=date('now','localtime') "
+                                "GROUP BY decision") if mem else []
+        gate_muted = _rows(mem, "SELECT scope_id, until_ts, reason FROM speech_mute "
+                                "ORDER BY until_ts DESC LIMIT 1") if mem else []
+        gate_last = _rows(mem, "SELECT ts, decision, reason, scope_id FROM speech_gate "
+                               "ORDER BY id DESC LIMIT 1") if mem else []
     finally:
         if mem:
             mem.close()
@@ -204,6 +211,12 @@ def api_overview() -> dict:
         "queue": {"pending": pending or 0, "oldest": oldest},
         "ledger": {"total": ledger_total or 0, "today": ledger_today or 0,
                    "last": last_inject[0] if last_inject else None},
+        "gate": {
+            "speak": sum(int(r["n"] or 0) for r in gate_today if r["decision"] == "speak"),
+            "hush": sum(int(r["n"] or 0) for r in gate_today if r["decision"] != "speak"),
+            "muted": gate_muted[0] if gate_muted else None,
+            "last": gate_last[0] if gate_last else None,
+        },
         "mood": mood,
         "life": life,
         "style_stats": style_stats,

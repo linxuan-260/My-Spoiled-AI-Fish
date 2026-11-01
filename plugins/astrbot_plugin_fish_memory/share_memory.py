@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent          # .../astrbot_plugin_fish_memory
 sys.path.insert(0, str(ROOT.parent))            # .../plugins（包名导入要它）
 
 from astrbot_plugin_fish_memory.config import ConfigStore, default_path, dget  # noqa: E402
-from astrbot_plugin_fish_memory.store import dbutil, memorydb  # noqa: E402
+from astrbot_plugin_fish_memory.store import dbutil, gatedb, memorydb  # noqa: E402
 
 DM_RE = re.compile(r":FriendMessage:(\d+)\s*$")
 
@@ -54,6 +54,35 @@ def _cfg():
         return ConfigStore(default_path()).get()
     except Exception:
         return {}
+
+
+def gate_report(limit: int = 20) -> None:
+    """最近几次「该不该主动接」的判断：说了没有、理由是什么。"""
+    st = gatedb.stats_today()
+    print("今天：说 %s 次 / 不说 %s 次" % (st["speak"], st["hush"]))
+    if st["reasons"]:
+        print("  理由：" + "，".join(f"{k} {v}" for k, v in
+                                   sorted(st["reasons"].items(), key=lambda x: -x[1])))
+    m = gatedb.mute_state("*")
+    if m:
+        print("  当前被要求闭嘴：到 %s（%s）" % (str(m["until"])[11:16], m["reason"] or "-"))
+    rows = gatedb.recent(int(limit))
+    if not rows:
+        print("（还没有判断记录：群聊里来一条没叫她的消息就会有一条）")
+        return
+    print("\n最近 %d 条：" % len(rows))
+    for r in rows:
+        t = str(r["ts"] or "")[11:19]
+        scope = str(r["scope_id"] or "").split(":")[-1]
+        mark = "说" if r["decision"] == "speak" else "默"
+        f = r["features"] or {}
+        extra = []
+        if f.get("last_speak_min") is not None:
+            extra.append("上次开口%.0f分前" % float(f["last_speak_min"]))
+        if f.get("hot"):
+            extra.append("近%d分%d条" % (2, int(f["hot"])))
+        print("  %s %s %-6s %-14s %s" % (t, scope[-12:], mark, r["reason"],
+                                         "  ".join(extra)))
 
 
 def stats() -> None:
@@ -168,6 +197,8 @@ def main(argv=None) -> int:
     ap.add_argument("--core", default="")
     ap.add_argument("--normal", default="")
     ap.add_argument("--consolidate", action="store_true")
+    ap.add_argument("--gate", type=int, default=-1, metavar="N",
+                    help="看最近 N 条发言判断（说/不说 + 理由）")
     ap.add_argument("--backfill-owner", action="store_true")
     ap.add_argument("--apply-shared-scopes", action="store_true")
     a = ap.parse_args(argv)
@@ -201,8 +232,10 @@ def main(argv=None) -> int:
             max_core=int(c.get("max_core") or 30),
             demote_after_days=int(c.get("demote_after_days") or 120),
         ))
+    if a.gate >= 0:
+        gate_report(a.gate or 20)
     if not any((a.stats, a.list, a.public, a.private, a.core, a.normal,
-                a.consolidate, a.backfill_owner, a.apply_shared_scopes)):
+                a.consolidate, a.backfill_owner, a.apply_shared_scopes, a.gate >= 0)):
         ap.print_help()
     return 0
 

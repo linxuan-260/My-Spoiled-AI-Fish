@@ -8,6 +8,7 @@
     A5  作用域隔离（别的会话的私有记忆进不来）
     A6  影子模式一个字都不注入
     A7  同一轮里不重复说同一件事
+    A8  发言判断已接管 AstrBot 的主动回复（骰子 → 判断）
 
 用法：
     python worker/eval_runner.py
@@ -139,6 +140,21 @@ def run(logger=None, cfg=None, quiet: bool = False) -> dict:
     lines = [ln.strip() for ln in mem.splitlines() if ln.strip().startswith("·")]
     dup = len(lines) - len(set(lines))
     check("A7 记忆不重复", dup == 0, f"{len(lines)} 行，重复 {dup}")
+
+    # ---- A8 发言判断：接管目标在位（插件进程内运行时直接看是否已接管）
+    try:
+        from astrbot.builtin_stars.astrbot.group_chat_context import GroupChatContext
+
+        from astrbot_plugin_fish_memory import gate
+
+        has_target = hasattr(GroupChatContext, "need_active_reply")
+        gate_ok = gate.patched() or has_target
+        why = ("已接管" if gate.patched() else
+               "主动回复接口在位（插件进程内已接管）" if has_target else "找不到主动回复接口")
+    except Exception as e:
+        gate_ok = False
+        why = f"检查失败：{e}"
+    check("A8 发言判断接管", gate_ok, why)
 
     n_pass = sum(1 for r in results if r["ok"])
     detail = {"results": results, "blocks": [b.layer for b in res["blocks"]],

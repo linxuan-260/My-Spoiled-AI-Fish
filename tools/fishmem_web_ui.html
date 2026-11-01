@@ -215,6 +215,13 @@ async function loadOverview(){
         <div class="v">${d.ledger.today}</div>
         <div class="sub">今日 · 累计 ${d.ledger.total} 条${d.ledger.last ? " · 最近 " + esc(ts(d.ledger.last.ts)) : ""}</div>
       </div>
+      <div class="card ${d.gate && d.gate.muted ? "warn" : ""}">
+        <div class="k">发言判断</div>
+        <div class="v">${d.gate ? `说 ${d.gate.speak} · 默 ${d.gate.hush}` : "—"}</div>
+        <div class="sub">${d.gate && d.gate.muted
+          ? `被要求闭嘴到 ${esc(ts(d.gate.muted.until_ts))}`
+          : (d.gate && d.gate.last ? `最近：${esc(d.gate.last.reason)} · ${esc(ts(d.gate.last.ts))}` : "今天还没有判断记录")}</div>
+      </div>
       <div class="card ${cfg.master ? "" : "bad"}">
         <div class="k">总开关</div>
         <div class="v">${cfg.master ? "已启用" : "已关闭"}</div>

@@ -64,5 +64,22 @@
     "sha256": "",
     "check_every_min": 10,
     "auto_restore": false
+  },
+
+  "gate": {
+    "enabled": true,
+    "quiet_hours": "0-7",
+    "cooldown_min": 10,
+    "unanswered_ttl_min": 30,
+    "scene_n": 12,
+    "hot_window_sec": 120,
+    "hot_count": 4,
+    "allow_question": true,
+    "self_names": ["肥鱼"],
+    "mute_keywords": ["闭嘴", "别说话", "别说了", "安静", "别吵", "别插嘴", "少说两句"],
+    "unmute_keywords": ["可以说了", "说话吧", "出来说话", "别憋着"],
+    "mute_minutes": 30,
+    "log_decisions": true,
+    "prune_days": 14
   }
 }

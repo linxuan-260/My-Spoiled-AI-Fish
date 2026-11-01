@@ -12,7 +12,7 @@ from pathlib import Path
 log = logging.getLogger("fishmem.db")
 
 TZ = _dt.timezone(_dt.timedelta(hours=8))
-SCHEMA_VERSION = 2   # 2：memories 增加 tier（core / normal）
+SCHEMA_VERSION = 3   # 2：memories 加 tier；3：加 speech_gate（发言判断）
 
 # ------------------------------------------------------------------ 时间
 
@@ -250,6 +250,27 @@ CREATE TABLE IF NOT EXISTS injection_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_ts ON injection_ledger(ts);
 CREATE INDEX IF NOT EXISTS idx_ledger_scope ON injection_ledger(scope_id, ts);
+
+-- 发言判断：群聊里每一次「该不该主动接」的决定与理由（gate.py）
+CREATE TABLE IF NOT EXISTS speech_gate (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  scope_id TEXT NOT NULL DEFAULT '*',
+  decision TEXT NOT NULL,          -- speak / hush
+  reason TEXT NOT NULL,            -- 深夜 / 刚说过话 / 提到我 / ...
+  score REAL DEFAULT 0,
+  features TEXT DEFAULT '{}'       -- 现场特征（JSON）：热度、上次开口间隔、命中词
+);
+CREATE INDEX IF NOT EXISTS idx_gate_ts ON speech_gate(ts);
+CREATE INDEX IF NOT EXISTS idx_gate_scope ON speech_gate(scope_id, ts);
+
+-- 被要求闭嘴：爹说「别说话了」之后，这段时间内不主动开口（'*' = 所有会话）
+CREATE TABLE IF NOT EXISTS speech_mute (
+  scope_id TEXT PRIMARY KEY,
+  until_ts TEXT NOT NULL,
+  reason TEXT DEFAULT '',
+  updated_at TEXT NOT NULL
+);
 """
 
 DDL_EMOTION = """
